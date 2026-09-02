@@ -1,13 +1,20 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
 import { User } from "../models/user.js";
 import { signAccessToken } from "../services/token.js";
 import { sendVerificationEmail } from "../services/email.js";
+import { sendPasswordResetEmail } from "../services/email.js";
 
 const router = Router();
+const FRONTEND_URL = process.env.FRONTEND_ORIGIN ?? "http://localhost:3000";
 
 function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+function hashToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
 }
 
 /**
@@ -230,6 +237,97 @@ router.post("/resend-otp", async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Failed to resend code" });
+  }
+});
+
+/**
+ * Forgot password
+ * POST /api/auth/forgot-password
+ */
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
+    const genericResponse = {
+      message:
+        "If an account with that email exists, a reset link has been sent.",
+    };
+
+    if (!user) {
+      return res.json(genericResponse);
+    }
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    user.passwordResetToken = hashToken(rawToken);
+    user.passwordResetExpires = new Date(Date.now() + 30 * 60 * 1000);
+    await user.save();
+
+    const resetLink = `${FRONTEND_URL}/reset-password?token=${rawToken}&email=${encodeURIComponent(normalizedEmail)}`;
+
+    await sendPasswordResetEmail(normalizedEmail, resetLink);
+
+    return res.json(genericResponse);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Failed to process request" });
+  }
+});
+
+/**
+ * Reset password
+ * POST /api/auth/reset-password
+ */
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { email, token, newPassword } = req.body;
+
+    if (!email || !token || !newPassword) {
+      return res.status(400).json({
+        message: "Email, token and new password are required",
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        message: "Password must be at least 8 characters",
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({
+      email: normalizedEmail,
+    }).select("+passwordResetToken +passwordResetExpires");
+
+    if (!user || !user.passwordResetToken || !user.passwordResetExpires) {
+      return res.status(400).json({ message: "Invalid or expired reset link" });
+    }
+
+    if (user.passwordResetExpires < new Date()) {
+      return res.status(400).json({ message: "Reset link has expired" });
+    }
+
+    if (user.passwordResetToken !== hashToken(token)) {
+      return res.status(400).json({ message: "Invalid reset link" });
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 12);
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    user.passwordChangedAt = new Date();
+
+    await user.save();
+
+    return res.json({ message: "Password reset successfully" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Failed to reset password" });
   }
 });
 
