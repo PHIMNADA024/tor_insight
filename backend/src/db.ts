@@ -5,20 +5,20 @@ import { registerModels } from "./models/index.js";
  * Opens the shared MongoDB connection and registers all models.
  * Call once at startup, before anything touches the database.
  */
-export async function connectDb(): Promise<void> {
-  const url = process.env.MONGO_URL;
+export async function connectDB() {
+  const mongoUri = process.env.MONGODB_URI;
 
-  if (!url) {
-    throw new Error("MONGO_URL is not set. Check your .env file.");
+  if (!mongoUri) {
+    throw new Error("MONGODB_URI is not defined");
   }
 
-  await mongoose.connect(url);
+  await mongoose.connect(mongoUri);
   registerModels();
 
-  console.log("Connected to MongoDB");
+  console.log("MongoDB connected");
 }
 
 /** Closes the connection so scripts can exit cleanly. */
-export async function disconnectDb(): Promise<void> {
+export async function disconnectDB() {
   await mongoose.disconnect();
 }
