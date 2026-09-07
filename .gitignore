@@ -7,6 +7,10 @@ frontend/out/
 
 # Backend build
 backend/dist/
+backend/data
 
 # Env
 .env
+
+# macOS
+.DS_Store
