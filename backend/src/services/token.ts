@@ -6,9 +6,9 @@ if (!JWT_SECRET) {
 }
 
 export function signAccessToken(payload: { id: string; role: string }) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign(payload, JWT_SECRET!, { expiresIn: "7d" });
 }
 
 export function verifyAccessToken(token: string) {
-  return jwt.verify(token, JWT_SECRET) as { id: string; role: string };
+  return jwt.verify(token, JWT_SECRET!) as unknown as { id: string; role: string; iat: number };
 }
