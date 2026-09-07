@@ -5,6 +5,8 @@ import { User } from "../models/user.js";
 import { signAccessToken } from "../services/token.js";
 import { sendVerificationEmail } from "../services/email.js";
 import { sendPasswordResetEmail } from "../services/email.js";
+import { requireAuth } from "../middleware/auth.js";
+import { authLimiter, otpLimiter } from "../middleware/rateLimit.js";
 
 const router = Router();
 const FRONTEND_URL = process.env.FRONTEND_ORIGIN ?? "http://localhost:3000";
@@ -21,7 +23,7 @@ function hashToken(token: string) {
  * Register
  * POST /api/auth/register
  */
-router.post("/register", async (req, res) => {
+router.post("/register", authLimiter, async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
@@ -75,7 +77,7 @@ router.post("/register", async (req, res) => {
   }
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -142,7 +144,7 @@ router.post("/login", async (req, res) => {
  * Verify email
  * POST /api/auth/verify-email
  */
-router.post("/verify-email", async (req, res) => {
+router.post("/verify-email", otpLimiter, async (req, res) => {
   try {
     const { email, otp } = req.body;
 
@@ -209,7 +211,7 @@ router.post("/verify-email", async (req, res) => {
  * Resend OTP
  * POST /api/auth/resend-otp
  */
-router.post("/resend-otp", async (req, res) => {
+router.post("/resend-otp", otpLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) {
@@ -244,7 +246,7 @@ router.post("/resend-otp", async (req, res) => {
  * Forgot password
  * POST /api/auth/forgot-password
  */
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", authLimiter, async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -283,7 +285,7 @@ router.post("/forgot-password", async (req, res) => {
  * Reset password
  * POST /api/auth/reset-password
  */
-router.post("/reset-password", async (req, res) => {
+router.post("/reset-password", authLimiter, async (req, res) => {
   try {
     const { email, token, newPassword } = req.body;
 
@@ -329,6 +331,14 @@ router.post("/reset-password", async (req, res) => {
     console.error(error);
     return res.status(500).json({ message: "Failed to reset password" });
   }
+});
+
+/**
+ * Current user
+ * GET /api/auth/me
+ */
+router.get("/me", requireAuth, (req, res) => {
+  return res.json({ user: req.user });
 });
 
 export default router;
