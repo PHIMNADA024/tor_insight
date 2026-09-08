@@ -23,3 +23,11 @@ export const otpLimiter = rateLimit({
   legacyHeaders: false,
   message: { message: "Too many attempts, please try again later" },
 });
+
+export const searchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests, please slow down" },
+});
