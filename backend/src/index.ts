@@ -8,7 +8,6 @@ import helmet from "helmet";
 
 import { connectDB } from "./db.js";
 import authRoutes from "./routes/auth.js";
-import userRoutes from "./routes/user.js";
 import { generalLimiter } from "./middleware/rateLimit.js";
 import { sanitizeBody } from "./middleware/sanitize.js";
 import { notFoundHandler } from "./middleware/notFound.js";
@@ -55,7 +54,6 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

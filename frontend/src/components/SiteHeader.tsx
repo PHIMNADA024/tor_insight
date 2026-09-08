@@ -1,10 +1,10 @@
 // site-header.tsx
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Bell, LogOut, Search, UserRound, X, Settings, ChevronDown } from "lucide-react";
+import { Bell, LogOut, Search, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -20,23 +20,10 @@ export function SiteHeader() {
   const router = useRouter();
   const { user, isLoaded, logout } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   function handleConfirmLogout() {
     logout();
     setShowLogoutConfirm(false);
-    setMenuOpen(false);
     router.push("/");
   }
 
@@ -83,54 +70,26 @@ export function SiteHeader() {
                 <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary" />
               </Link>
 
-              <div className="relative" ref={menuRef}>
-                <button
-                  type="button"
-                  onClick={() => setMenuOpen((v) => !v)}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted"
+              <div className="flex items-center gap-2">
+                <span className="flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                  <UserRound className="size-4" />
+                </span>
+                <span
+                  className="hidden w-[100px] truncate text-sm font-medium sm:inline"
+                  title={user.name}
                 >
-                  <span className="flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                    <UserRound className="size-4" />
-                  </span>
-                  <span
-                    className="hidden w-[100px] truncate text-left text-sm font-medium sm:inline"
-                    title={user.name}
-                  >
-                    {truncateName(user.name)}
-                  </span>
-                  <ChevronDown className="hidden size-4 text-muted-foreground sm:inline" />
-                </button>
-
-                {menuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-border bg-card py-1.5 shadow-[var(--shadow-card)]">
-                    <div className="border-b border-border px-3 pb-2">
-                      <p className="truncate text-sm font-medium">{user.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-                    </div>
-
-                    <Link
-                      href="/settings"
-                      onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted"
-                    >
-                      <Settings className="size-4" />
-                      ตั้งค่าบัญชี
-                    </Link>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setShowLogoutConfirm(true);
-                      }}
-                      className="flex cursor-pointer w-full items-center gap-2 px-3 py-2 text-left text-sm text-destructive hover:bg-muted"
-                    >
-                      <LogOut className="size-4" />
-                      ออกจากระบบ
-                    </button>
-                  </div>
-                )}
+                  {truncateName(user.name)}
+                </span>
               </div>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowLogoutConfirm(true)}
+                aria-label="ออกจากระบบ"
+              >
+                <LogOut className="size-4" />
+              </Button>
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -171,7 +130,10 @@ export function SiteHeader() {
             </p>
 
             <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowLogoutConfirm(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setShowLogoutConfirm(false)}
+              >
                 ยกเลิก
               </Button>
               <Button variant="destructive" onClick={handleConfirmLogout}>

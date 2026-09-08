@@ -39,19 +39,6 @@ const userSchema = new Schema(
     passwordChangedAt: { type: Date },
 
     lastLoginAt: { type: Date },
-
-    interestCriteria: {
-      type: {
-        categories: { type: [String], default: [] },
-        agencies: { type: [String], default: [] },
-        keywords: { type: [String], default: [] },
-        minBudget: { type: Number },
-        maxBudget: { type: Number },
-        fiscalYear: { type: Number },
-      },
-      default: () => ({}),
-    },  
-    notifyByEmail: { type: Boolean, default: true },
   },
   { timestamps: true },
 );

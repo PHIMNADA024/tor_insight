@@ -20,7 +20,7 @@ function Select({ label, value }: { label: string; value: string }) {
 export default function SearchPage() {
     return (
         <div className="min-h-screen bg-background">
-            <SiteHeader />
+            <SiteHeader variant="app" />
 
             <main className="mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[260px_1fr]">
                 <aside className="h-fit rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
