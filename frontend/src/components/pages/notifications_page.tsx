@@ -46,7 +46,7 @@ const toneClass: Record<string, string> = {
 export default function NotificationsPage() {
   return (
     <div className="min-h-screen bg-background">
-      <SiteHeader variant="app" />
+      <SiteHeader />
 
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         <h1 className="text-xl font-semibold tracking-tight">
