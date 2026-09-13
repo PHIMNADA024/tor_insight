@@ -29,6 +29,10 @@ export function useAuth() {
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
+    // Reads localStorage, which isn't available during SSR — this can only
+    // run after mount, so hydrating state here (rather than lazily in
+    // useState) is intentional, not an effect-avoidance smell.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUser(readStoredUser());
     setIsLoaded(true);
 
