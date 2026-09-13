@@ -24,7 +24,7 @@ export function TorPage() {
   const router = useRouter();
   return (
     <div className="min-h-screen bg-background">
-      <SiteHeader variant="app" />
+      <SiteHeader />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <div className="mb-6 flex items-center justify-between">
           <button
