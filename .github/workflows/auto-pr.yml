@@ -1,0 +1,25 @@
+name: Auto PR
+
+on:
+  push:
+    branches-ignore:
+      - main
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Open a PR for this branch if one doesn't exist yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh pr view --json state -q .state >/dev/null 2>&1; then
+            echo "PR already exists for this branch, skipping"
+          else
+            gh pr create --fill --base main --head "${{ github.ref_name }}"
+          fi
