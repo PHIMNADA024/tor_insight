@@ -27,9 +27,20 @@ const CATEGORY_LABELS: Record<string, string> = {
     uncategorized: "ไม่ระบุ",
 };
 
+/** Shape of a TOR record as returned by GET /api/tors. */
+type TorSummary = {
+    id: string;
+    title: string;
+    agency: string;
+    category: string;
+    budgetAmount?: number;
+    fiscalYear?: number;
+    publishedDate?: string;
+};
+
 export function HomePage() {
     // Records from the API. Empty until the fetch resolves.
-    const [tors, setTors] = useState<any[]>([]); 
+    const [tors, setTors] = useState<TorSummary[]>([]); 
     useEffect(() => {
         fetch("http://localhost:4000/api/tors?limit=4")
         .then((res) => res.json())
@@ -119,10 +130,11 @@ export function HomePage() {
                                             </Link>
                                         </td>
                                         <td className="px-4 py-3 text-muted-foreground">{t.agency}</td>
-                                        <td className="px-4 py-3">{formatTHB(t.budgetAmount)}</td>
                                         <td className="px-4 py-3 text-muted-foreground">
-                                            {new Date(t.publishedDate).toLocaleDateString("th-TH")}
-                                        </td>                                        
+                                            {t.publishedDate
+                                                ? new Date(t.publishedDate).toLocaleDateString("th-TH")
+                                                : "-"}
+                                        </td>                                     
                                         <td className="px-4 py-3">
                                             <span className="rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground">
                                                 {CATEGORY_LABELS[t.category] ?? t.category}                                            
