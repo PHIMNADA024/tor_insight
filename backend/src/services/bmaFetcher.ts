@@ -2,6 +2,15 @@ import fs from "fs";
 import { Tor } from "../models/index.js";
 import { SyncLog } from "../models/index.js";
 
+
+/**
+ * BMA data collection service.
+ * Reads an OCDS release file, maps each release to a TOR record,
+ * categorises it using the UNSPSC codes BMA provides, and upserts on
+ * `ocid` so reruns update rather than duplicate. Each run writes one
+ * SyncLog entry with counts and status.
+ */ 
+
 /** UNSPSC prefixes we treat as IT-related. */
 const IT_PREFIXES = ["43", "8111", "8116"];
 /** Narrower set: software and IT services specifically. */
