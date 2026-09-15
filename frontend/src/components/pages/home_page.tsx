@@ -1,4 +1,5 @@
-import Link from "next/link";
+"use client"; 
+
 import {
     Search,
     Globe,
@@ -15,11 +16,28 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { tors, formatTHB, categories } from "@/lib/mock-data";
+import { formatTHB, categories } from "@/lib/mock-data";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 
 const catIcons = [Globe, Smartphone, Brain, BarChart3, MapPin];
+const CATEGORY_LABELS: Record<string, string> = {
+    software: "ซอฟต์แวร์",
+    it_equipment: "อุปกรณ์ไอที",
+    uncategorized: "ไม่ระบุ",
+};
 
 export function HomePage() {
+    // Records from the API. Empty until the fetch resolves.
+    const [tors, setTors] = useState<any[]>([]); 
+    useEffect(() => {
+        fetch("http://localhost:4000/api/tors?limit=4")
+        .then((res) => res.json())
+        .then((data) => setTors(data.results))
+        .catch((err) => console.error("Failed to load TOR:s", err));
+    }, []
+    );
+    
     return (
         <div className="min-h-screen bg-background">
             <SiteHeader />
@@ -93,7 +111,7 @@ export function HomePage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {tors.slice(0, 4).map((t) => (
+                                {tors.map((t) => (
                                     <tr key={t.id} className="border-t border-border">
                                         <td className="px-4 py-3">
                                             <Link href="/tor" className="hover:text-primary">
@@ -101,11 +119,13 @@ export function HomePage() {
                                             </Link>
                                         </td>
                                         <td className="px-4 py-3 text-muted-foreground">{t.agency}</td>
-                                        <td className="px-4 py-3">{formatTHB(t.budget)}</td>
-                                        <td className="px-4 py-3 text-muted-foreground">{t.published}</td>
+                                        <td className="px-4 py-3">{formatTHB(t.budgetAmount)}</td>
+                                        <td className="px-4 py-3 text-muted-foreground">
+                                            {new Date(t.publishedDate).toLocaleDateString("th-TH")}
+                                        </td>                                        
                                         <td className="px-4 py-3">
                                             <span className="rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground">
-                                                {t.category}
+                                                {CATEGORY_LABELS[t.category] ?? t.category}                                            
                                             </span>
                                         </td>
                                     </tr>
