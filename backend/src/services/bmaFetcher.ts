@@ -1,8 +1,3 @@
-import fs from "fs";
-import { Tor } from "../models/index.js";
-import { SyncLog } from "../models/index.js";
-
-
 /**
  * BMA data collection service.
  * Reads an OCDS release file, maps each release to a TOR record,
@@ -10,6 +5,10 @@ import { SyncLog } from "../models/index.js";
  * `ocid` so reruns update rather than duplicate. Each run writes one
  * SyncLog entry with counts and status.
  */ 
+
+import fs from "fs";
+import { Tor } from "../models/index.js";
+import { SyncLog } from "../models/index.js";
 
 /** UNSPSC prefixes we treat as IT-related. */
 const IT_PREFIXES = ["43", "8111", "8116"];
@@ -25,6 +24,13 @@ function classify(codes: string[]): string {
     return "it_equipment";
   }
   return "uncategorized";
+}
+
+/** True if any of the record's UNSPSC codes is IT-related. */
+function isRelevant(codes: string[]): boolean {
+  return codes.some((c) =>
+    IT_PREFIXES.some((p) => c.startsWith(p)),
+  );
 }
 
 /** Thai fiscal years use the Buddhist calendar: 2569 = 2026. */
@@ -45,6 +51,8 @@ function mapRelease(release: any) {
   const codes: string[] = items
     .map((i: any) => i.classification?.id)
     .filter(Boolean);
+
+    if (!isRelevant(codes)) return null;
 
   // BMA sometimes uses the non-standard "value" instead of "amount".
   const budget = release.planning?.budget?.amount;
