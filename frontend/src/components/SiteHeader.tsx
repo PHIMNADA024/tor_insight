@@ -4,7 +4,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Bell, LogOut, Search, UserRound, X, Settings, ChevronDown } from "lucide-react";
+import { Bell, LogOut, Search, UserRound, X, Settings, ChevronDown, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -107,6 +107,17 @@ export function SiteHeader() {
                       <p className="truncate text-sm font-medium">{user.name}</p>
                       <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                     </div>
+
+                    {user.role === "admin" && (
+                      <Link
+                        href="/admin"
+                        onClick={() => setMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted"
+                      >
+                        <ShieldCheck className="size-4" />
+                        แผงควบคุมผู้ดูแลระบบ
+                      </Link>
+                    )}
 
                     <Link
                       href="/settings"
