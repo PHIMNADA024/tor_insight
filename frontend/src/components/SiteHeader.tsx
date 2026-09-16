@@ -4,7 +4,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Bell, LogOut, Search, UserRound, X, Settings, ChevronDown, ShieldCheck } from "lucide-react";
+import { Bell, LogOut, Search, UserRound, X, Settings, ChevronDown, ShieldCheck, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -126,6 +126,15 @@ export function SiteHeader() {
                     >
                       <Settings className="size-4" />
                       ตั้งค่าบัญชี
+                    </Link>
+
+                    <Link
+                        href="/my-feedback"
+                        onClick={() => setMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted"
+                    >
+                        <MessageSquare className="size-4" />
+                        ข้อเสนอแนะของฉัน
                     </Link>
 
                     <button

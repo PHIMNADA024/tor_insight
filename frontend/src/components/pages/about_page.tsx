@@ -68,6 +68,10 @@ export default function AboutPage() {
                     <Button asChild variant="outline">
                         <Link href="/dashboard">ดูแดชบอร์ด</Link>
                     </Button>
+
+                    <Button asChild variant="outline">
+                        <Link href="/my-feedback">ส่งข้อเสนอแนะ</Link>
+                    </Button>
                 </div>
             </main>
         </div>

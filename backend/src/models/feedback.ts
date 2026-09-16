@@ -2,12 +2,17 @@ import { Schema, model, type InferSchemaType } from "mongoose";
 
 const feedbackSchema = new Schema(
   {
-    torId: { type: Schema.Types.ObjectId, required: true },
+    // Optional — general app feedback has no associated TOR.
+    torId: { type: Schema.Types.ObjectId },
+    // Free-text so users can name a TOR from the About page
+    // without navigating to its detail page first.
+    torReference: { type: String, trim: true },
+
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
 
     category: {
       type: String,
-      enum: ["incorrect_info", "outdated_info", "broken_link", "other"],
+      enum: ["incorrect_info", "outdated_info", "broken_link", "app_feedback", "other"],
       required: true,
     },
     description: { type: String, required: true, trim: true },

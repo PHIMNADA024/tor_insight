@@ -10,6 +10,8 @@ import { connectDB } from "./db.js";
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/user.js";
 import torRoutes from "./routes/tor.js";
+import feedbackRoutes from "./routes/feedback.js";
+import adminFeedbackRoutes from "./routes/admin-feedback.js";
 import { generalLimiter } from "./middleware/rateLimit.js";
 import { sanitizeBody } from "./middleware/sanitize.js";
 import { notFoundHandler } from "./middleware/notFound.js";
@@ -58,6 +60,8 @@ app.get("/health", (_req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/tors", torRoutes);
+app.use("/api/feedback", feedbackRoutes);
+app.use("/api/admin", adminFeedbackRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
