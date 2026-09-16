@@ -33,6 +33,7 @@ const items = [
     },
     {
         label: "ข้อเสนอแนะ",
+        href: "/admin/feedback",
         icon: MessageSquare,
     },
     {

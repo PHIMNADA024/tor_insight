@@ -43,6 +43,12 @@ router.patch("/feedback/:id", requireAuth, requireAdmin, async (req, res) => {
       return res.status(400).json({ message: "Valid status is required" });
     }
 
+    if (status !== "pending" && (!adminResponse || !adminResponse.trim())) {
+      return res.status(400).json({
+        message: "A response is required when updating feedback status",
+      });
+    }
+
     const feedback = await Feedback.findById(req.params.id);
 
     if (!feedback) {
@@ -70,7 +76,7 @@ router.patch("/feedback/:id", requireAuth, requireAdmin, async (req, res) => {
       targetId: feedback._id,
       metadata: { from: previousStatus, to: status },
     });
-
+    
     // Notify the user only when there's an actual response to show them
     if (feedback.adminResponse) {
       const user = await User.findById(feedback.userId);

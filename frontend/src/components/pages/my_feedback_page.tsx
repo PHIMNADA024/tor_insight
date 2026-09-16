@@ -57,6 +57,7 @@ export default function MyFeedbackPage() {
 
     const [items, setItems] = useState<FeedbackItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [showAll, setShowAll] = useState(false);
 
     const needsTorReference = category !== "app_feedback" && category !== "other";
 
@@ -223,7 +224,19 @@ async function handleSubmit(e: React.FormEvent) {
 
                 {/* Tracker */}
                 <div className="rounded-xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
-                    <h2 className="mb-4 text-sm font-semibold">ประวัติข้อเสนอแนะ</h2>
+                    <div className="mb-4 flex items-center justify-between">
+                        <h2 className="text-sm font-semibold">ประวัติข้อเสนอแนะ</h2>
+
+                        {!isLoading && items.length > 3 && (
+                            <button
+                                type="button"
+                                onClick={() => setShowAll((v) => !v)}
+                                className="cursor-pointer text-xs text-primary hover:underline"
+                            >
+                                {showAll ? "แสดงน้อยลง" : `แสดงทั้งหมด (${items.length})`}
+                            </button>
+                        )}
+                    </div>
 
                     {isLoading ? (
                         <p className="text-sm text-muted-foreground">กำลังโหลด...</p>
@@ -232,8 +245,12 @@ async function handleSubmit(e: React.FormEvent) {
                             คุณยังไม่เคยส่งข้อเสนอแนะ
                         </p>
                     ) : (
-                        <ul className="space-y-3">
-                            {items.map((item) => {
+                        <ul
+                            className={`space-y-3 ${
+                                showAll ? "max-h-[480px] overflow-y-auto pr-1" : ""
+                            }`}
+                        >
+                            {(showAll ? items : items.slice(0, 3)).map((item) => {
                                 const statusInfo = STATUS_LABELS[item.status];
                                 return (
                                     <li
