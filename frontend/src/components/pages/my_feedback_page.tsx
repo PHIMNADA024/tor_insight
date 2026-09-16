@@ -27,6 +27,9 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
     resolved: { label: "แก้ไขแล้ว", className: "bg-success/15 text-success" },
 };
 
+const MIN_DESCRIPTION_LENGTH = 10;
+const MAX_DESCRIPTION_LENGTH = 2000;
+
 function getToken() {
     if (typeof window === "undefined") return null;
     return localStorage.getItem("token") ?? sessionStorage.getItem("token");
@@ -83,56 +86,68 @@ export default function MyFeedbackPage() {
         }
         loadFeedback();
     }, [router]);
+    
+async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setFormMessage(null);
+    setFormError(null);
 
-    async function handleSubmit(e: React.FormEvent) {
-        e.preventDefault();
-        setFormMessage(null);
-        setFormError(null);
-
-        const token = getToken();
-        if (!token) {
-            setFormError("กรุณาเข้าสู่ระบบก่อนส่งข้อเสนอแนะ");
-            return;
-        }
-
-        if (!description.trim()) {
-            setFormError("กรุณากรอกรายละเอียด");
-            return;
-        }
-
-        setIsSubmitting(true);
-
-        try {
-            const res = await fetch(`${API_URL}/api/feedback`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    category,
-                    description,
-                    torReference: needsTorReference ? torReference : undefined,
-                }),
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
-                setFormError(data.message ?? "ส่งข้อเสนอแนะไม่สำเร็จ");
-                return;
-            }
-
-            setFormMessage("ส่งข้อเสนอแนะเรียบร้อยแล้ว ขอบคุณสำหรับความคิดเห็นของคุณ");
-            setDescription("");
-            setTorReference("");
-            loadFeedback();
-        } catch {
-            setFormError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
-        } finally {
-            setIsSubmitting(false);
-        }
+    const token = getToken();
+    if (!token) {
+        setFormError("กรุณาเข้าสู่ระบบก่อนส่งข้อเสนอแนะ");
+        return;
     }
+
+    const trimmedDescription = description.trim();
+
+    if (trimmedDescription.length < MIN_DESCRIPTION_LENGTH) {
+        setFormError(`กรุณากรอกรายละเอียดอย่างน้อย ${MIN_DESCRIPTION_LENGTH} ตัวอักษร`);
+        return;
+    }
+
+    if (trimmedDescription.length > MAX_DESCRIPTION_LENGTH) {
+        setFormError(`รายละเอียดต้องไม่เกิน ${MAX_DESCRIPTION_LENGTH} ตัวอักษร`);
+        return;
+    }
+
+    if (needsTorReference && !torReference.trim()) {
+        setFormError("กรุณาระบุ TOR ที่เกี่ยวข้อง");
+        return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+        const res = await fetch(`${API_URL}/api/feedback`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+                category,
+                description: trimmedDescription,
+                torReference: needsTorReference ? torReference.trim() : undefined,
+            }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            setFormError(data.message ?? "ส่งข้อเสนอแนะไม่สำเร็จ");
+            return;
+        }
+
+        setFormMessage("ส่งข้อเสนอแนะเรียบร้อยแล้ว ขอบคุณสำหรับความคิดเห็นของคุณ");
+        setDescription("");
+        setTorReference("");
+        loadFeedback();
+    } catch {
+        setFormError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+    } finally {
+        setIsSubmitting(false);
+    }
+}
 
     return (
         <div className="min-h-screen bg-background">
@@ -186,12 +201,16 @@ export default function MyFeedbackPage() {
                         <textarea
                             id="description"
                             rows={4}
+                            maxLength={MAX_DESCRIPTION_LENGTH}
                             className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm"
                             placeholder="อธิบายปัญหาหรือข้อเสนอแนะของคุณ"
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             required
                         />
+                        <p className="text-right text-xs text-muted-foreground">
+                            {description.length}/{MAX_DESCRIPTION_LENGTH}
+                        </p>
                     </div>
 
                     {formError && <p className="text-sm text-destructive">{formError}</p>}
