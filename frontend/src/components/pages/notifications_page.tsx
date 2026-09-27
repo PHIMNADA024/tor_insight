@@ -2,15 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, CheckCircle2, Info } from "lucide-react";
+import { Bell, CheckCircle2, Info, MessageSquare } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { useNotifications } from "@/contexts/notification-context";
+import { getNotificationLink } from "@/lib/notification-links";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5050";
 
 const TYPE_ICON: Record<string, { icon: typeof Bell; tone: string }> = {
     tor_match: { icon: Bell, tone: "primary" },
     feedback_resolved: { icon: CheckCircle2, tone: "success" },
+    new_feedback: { icon: MessageSquare, tone: "muted" },
 };
 
 const toneClass: Record<string, string> = {
@@ -37,6 +39,7 @@ type NotificationItem = {
     message: string;
     isRead: boolean;
     createdAt: string;
+    relatedId?: string;
 };
 
 export default function NotificationsPage() {
@@ -131,7 +134,10 @@ export default function NotificationsPage() {
                             return (
                                 <li
                                     key={n._id}
-                                    onClick={() => !n.isRead && markAsRead(n._id)}
+                                    onClick={() => {
+                                        if (!n.isRead) markAsRead(n._id);
+                                        router.push(getNotificationLink(n.type, n.relatedId));
+                                    }}
                                     className={`flex cursor-pointer gap-3 rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)] ${
                                         !n.isRead ? "" : "opacity-80"
                                     }`}

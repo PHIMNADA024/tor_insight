@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 
 export function NotificationToastContainer() {
     const { user } = useAuth();
-    const { toasts, dismissToast } = useNotifications();
+    const { toasts, dismissToast, markAsRead } = useNotifications();
 
     if (!user) return null;
 
@@ -17,6 +17,7 @@ export function NotificationToastContainer() {
                     <NotificationToast
                         notification={toast}
                         onDismiss={() => dismissToast(toast._id)}
+                        onMarkAsRead={markAsRead} 
                     />
                 </div>
             ))}

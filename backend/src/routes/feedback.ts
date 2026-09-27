@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { Feedback } from "../models/feedback.js";
+import { Notification } from "../models/notification.js";
+import { User } from "../models/user.js";
 import { requireAuth } from "../middleware/auth.js";
+import { sendNewFeedbackAdminEmail } from "../services/email.js";
 
 const router = Router();
 
@@ -12,12 +15,18 @@ const VALID_CATEGORIES = [
   "other",
 ];
 
+const CATEGORY_LABELS: Record<string, string> = {
+  incorrect_info: "ข้อมูลไม่ถูกต้อง",
+  outdated_info: "ข้อมูลล้าสมัย",
+  broken_link: "ลิงก์ใช้งานไม่ได้",
+  app_feedback: "ข้อเสนอแนะเกี่ยวกับแอป",
+  other: "อื่นๆ",
+};
+
 const MIN_DESCRIPTION_LENGTH = 10;
 const MAX_DESCRIPTION_LENGTH = 2000;
 const MAX_TOR_REFERENCE_LENGTH = 200;
 
-// Categories that describe a specific TOR problem should have
-// something identifying which TOR, unlike general app feedback.
 const CATEGORIES_REQUIRING_REFERENCE = [
   "incorrect_info",
   "outdated_info",
@@ -25,6 +34,45 @@ const CATEGORIES_REQUIRING_REFERENCE = [
 ];
 
 const MAX_SUBMISSIONS_PER_DAY = 10;
+
+/**
+ * Notify all admins, in-app and by email, that new feedback arrived.
+ */
+async function notifyAdminsOfNewFeedback(
+  feedbackId: string,
+  submitterName: string,
+  category: string,
+  description: string,
+  torReference?: string,
+) {
+  const admins = await User.find({ role: "admin", status: "active" });
+
+  const categoryLabel = CATEGORY_LABELS[category] ?? category;
+
+  await Notification.insertMany(
+    admins.map((admin) => ({
+      userId: admin._id,
+      type: "new_feedback",
+      title: "มีข้อเสนอแนะใหม่รอตรวจสอบ",
+      message: `${submitterName} ส่งข้อเสนอแนะประเภท "${categoryLabel}"`,
+      relatedId: feedbackId,
+    })),
+  );
+
+  for (const admin of admins) {
+    if (!admin.notifyByEmail) continue;
+
+    sendNewFeedbackAdminEmail(
+      admin.email,
+      submitterName,
+      categoryLabel,
+      description,
+      torReference,
+    ).catch((error) => {
+      console.error(`Failed to send new-feedback email to ${admin.email}:`, error);
+    });
+  }
+}
 
 /**
  * Submit feedback — general app feedback or a TOR-specific problem.
@@ -61,7 +109,7 @@ router.post("/", requireAuth, async (req, res) => {
         message: `Description must be under ${MAX_DESCRIPTION_LENGTH} characters`,
       });
     }
-
+    
     // --- TOR reference required for TOR-specific categories ---
     const trimmedReference =
       typeof torReference === "string" ? torReference.trim() : "";
@@ -70,8 +118,8 @@ router.post("/", requireAuth, async (req, res) => {
       CATEGORIES_REQUIRING_REFERENCE.includes(category) &&
       !torId &&
       !trimmedReference
-    ) {
-      return res.status(400).json({
+    ) {      
+        return res.status(400).json({
         message: "Please specify which TOR this feedback relates to",
       });
     }
@@ -104,7 +152,7 @@ router.post("/", requireAuth, async (req, res) => {
     const recentDuplicate = await Feedback.findOne({
       userId: req.user!.id,
       description: trimmedDescription,
-      createdAt: { $gte: new Date(Date.now() - 5 * 60 * 1000) }, // last 5 min
+      createdAt: { $gte: new Date(Date.now() - 5 * 60 * 1000) },
     });
 
     if (recentDuplicate) {
@@ -119,6 +167,16 @@ router.post("/", requireAuth, async (req, res) => {
       description: trimmedDescription,
       torId: torId || undefined,
       torReference: trimmedReference || undefined,
+    });
+
+    notifyAdminsOfNewFeedback(
+      feedback._id.toString(),
+      req.user!.name,
+      category,
+      trimmedDescription,
+      trimmedReference || undefined,
+    ).catch((error) => {
+      console.error("Failed to notify admins of new feedback:", error);
     });
 
     return res.status(201).json({ message: "Feedback submitted", feedback });

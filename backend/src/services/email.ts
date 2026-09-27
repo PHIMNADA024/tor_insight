@@ -71,3 +71,27 @@ export async function sendFeedbackResolvedEmail(
     `,
   });
 }
+
+export async function sendNewFeedbackAdminEmail(
+  adminEmail: string,
+  submitterName: string,
+  category: string,
+  description: string,
+  torReference?: string,
+) {
+  await transporter.sendMail({
+    from: `"TOR Insight" <${process.env.EMAIL_USER}>`,
+    to: adminEmail,
+    subject: "TOR Insight - มีข้อเสนอแนะใหม่รอตรวจสอบ",
+    html: `
+      <div>
+        <h2>TOR Insight</h2>
+        <p>มีข้อเสนอแนะใหม่จาก ${submitterName}:</p>
+        <p><strong>ประเภท:</strong> ${category}</p>
+        ${torReference ? `<p><strong>เกี่ยวข้องกับ:</strong> ${torReference}</p>` : ""}
+        <p><strong>รายละเอียด:</strong> ${description}</p>
+        <p>กรุณาตรวจสอบและตอบกลับได้ที่แผงควบคุมผู้ดูแลระบบ</p>
+      </div>
+    `,
+  });
+}

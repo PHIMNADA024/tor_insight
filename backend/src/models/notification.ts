@@ -5,7 +5,7 @@ const notificationSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     type: {
       type: String,
-      enum: ["feedback_resolved", "tor_match"],
+      enum: ["feedback_resolved", "tor_match", "new_feedback"],
       required: true,
     },
     title: { type: String, required: true, trim: true },

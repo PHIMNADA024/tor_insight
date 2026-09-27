@@ -2,26 +2,31 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, CheckCircle2, X } from "lucide-react";
+import { Bell, CheckCircle2, MessageSquare, X } from "lucide-react";
+import { getNotificationLink } from "@/lib/notification-links";
 
 type ToastNotification = {
     _id: string;
     type: string;
     title: string;
     message: string;
+    relatedId?: string;
 };
 
 const TYPE_ICON: Record<string, typeof Bell> = {
     tor_match: Bell,
     feedback_resolved: CheckCircle2,
+    new_feedback: MessageSquare,
 };
 
 export function NotificationToast({
     notification,
     onDismiss,
+    onMarkAsRead,
 }: {
     notification: ToastNotification;
     onDismiss: () => void;
+    onMarkAsRead: (id: string) => void;
 }) {
     const router = useRouter();
     const Icon = TYPE_ICON[notification.type] ?? Bell;
@@ -40,7 +45,8 @@ export function NotificationToast({
             <button
                 type="button"
                 onClick={() => {
-                    router.push("/notifications");
+                    onMarkAsRead(notification._id);
+                    router.push(getNotificationLink(notification.type, notification.relatedId));
                     onDismiss();
                 }}
                 className="flex-1 cursor-pointer text-left"
