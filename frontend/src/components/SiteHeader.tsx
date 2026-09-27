@@ -1,12 +1,12 @@
-// site-header.tsx
 "use client";
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Bell, LogOut, Search, UserRound, X, Settings, ChevronDown } from "lucide-react";
+import { Bell, LogOut, Search, UserRound, X, Settings, ChevronDown, ShieldCheck, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { useNotifications } from "@/contexts/notification-context";
 
 const nav = [
   { label: "หน้าแรก", href: "/" },
@@ -19,6 +19,7 @@ export function SiteHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isLoaded, logout } = useAuth();
+  const { unreadCount } = useNotifications();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -80,7 +81,9 @@ export function SiteHeader() {
                 aria-label="การแจ้งเตือน"
               >
                 <Bell className="size-5" />
-                <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary" />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary" />
+                )}
               </Link>
 
               <div className="relative" ref={menuRef}>
@@ -108,6 +111,17 @@ export function SiteHeader() {
                       <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                     </div>
 
+                    {user.role === "admin" && (
+                      <Link
+                        href="/admin"
+                        onClick={() => setMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted"
+                      >
+                        <ShieldCheck className="size-4" />
+                        แผงควบคุมผู้ดูแลระบบ
+                      </Link>
+                    )}
+
                     <Link
                       href="/settings"
                       onClick={() => setMenuOpen(false)}
@@ -115,6 +129,15 @@ export function SiteHeader() {
                     >
                       <Settings className="size-4" />
                       ตั้งค่าบัญชี
+                    </Link>
+
+                    <Link
+                        href="/my-feedback"
+                        onClick={() => setMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted"
+                    >
+                        <MessageSquare className="size-4" />
+                        ข้อเสนอแนะของฉัน
                     </Link>
 
                     <button

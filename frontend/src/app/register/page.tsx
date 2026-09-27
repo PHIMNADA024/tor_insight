@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import RegisterPage from "@/components/pages/register_page";
 
-const metadata: Metadata = {
+export const metadata: Metadata = {
     title: "สมัครสมาชิก",
     description:
         "สมัครสมาชิก TOR Insight เพื่อบันทึกการค้นหาและติดตาม TOR ของหน่วยงานกรุงเทพมหานคร",

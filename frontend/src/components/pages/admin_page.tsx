@@ -6,9 +6,6 @@ import {
     Database,
     MessageSquare,
     Users,
-    Building2,
-    BarChart3,
-    Settings,
 } from "lucide-react";
 import {
     Cell,
@@ -36,23 +33,12 @@ const items = [
     },
     {
         label: "ข้อเสนอแนะ",
+        href: "/admin/feedback",
         icon: MessageSquare,
     },
     {
         label: "ผู้ใช้งาน",
         icon: Users,
-    },
-    {
-        label: "หน่วยงาน",
-        icon: Building2,
-    },
-    {
-        label: "รายงาน",
-        icon: BarChart3,
-    },
-    {
-        label: "ตั้งค่าระบบ",
-        icon: Settings,
     },
 ];
 

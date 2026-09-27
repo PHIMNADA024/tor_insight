@@ -48,3 +48,50 @@ export async function sendPasswordResetEmail(email: string, resetLink: string) {
     `,
   });
 }
+
+export async function sendFeedbackResolvedEmail(
+  email: string,
+  name: string,
+  description: string,
+  adminResponse: string,
+) {
+  await transporter.sendMail({
+    from: `"TOR Insight" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: "TOR Insight - ข้อเสนอแนะของคุณได้รับการตอบกลับแล้ว",
+    html: `
+      <div>
+        <h2>TOR Insight</h2>
+        <p>สวัสดีคุณ ${name},</p>
+        <p>ข้อเสนอแนะของคุณได้รับการตรวจสอบและตอบกลับแล้ว:</p>
+        <p><strong>ข้อความของคุณ:</strong> ${description}</p>
+        <p><strong>คำตอบจากทีมงาน:</strong> ${adminResponse}</p>
+        <p>ขอบคุณที่ช่วยพัฒนา TOR Insight ให้ดียิ่งขึ้น</p>
+      </div>
+    `,
+  });
+}
+
+export async function sendNewFeedbackAdminEmail(
+  adminEmail: string,
+  submitterName: string,
+  category: string,
+  description: string,
+  torReference?: string,
+) {
+  await transporter.sendMail({
+    from: `"TOR Insight" <${process.env.EMAIL_USER}>`,
+    to: adminEmail,
+    subject: "TOR Insight - มีข้อเสนอแนะใหม่รอตรวจสอบ",
+    html: `
+      <div>
+        <h2>TOR Insight</h2>
+        <p>มีข้อเสนอแนะใหม่จาก ${submitterName}:</p>
+        <p><strong>ประเภท:</strong> ${category}</p>
+        ${torReference ? `<p><strong>เกี่ยวข้องกับ:</strong> ${torReference}</p>` : ""}
+        <p><strong>รายละเอียด:</strong> ${description}</p>
+        <p>กรุณาตรวจสอบและตอบกลับได้ที่แผงควบคุมผู้ดูแลระบบ</p>
+      </div>
+    `,
+  });
+}

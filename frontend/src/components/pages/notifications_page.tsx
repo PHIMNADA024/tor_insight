@@ -1,119 +1,176 @@
-import { Bell, CheckCircle2, Info } from "lucide-react";
-import { SiteHeader } from "@/components/SiteHeader";
-import { Button } from "@/components/ui/button";
+"use client";
 
-const notifications = [
-  {
-    icon: Bell,
-    tone: "primary",
-    title: "มี TOR ใหม่ที่ตรงกับความสนใจของคุณ",
-    body: 'TOR ใหม่ "โครงการพัฒนาแอปพลิเคชันบริการประชาชนบนมือถือ" ตรงกับเงื่อนไขที่คุณบันทึกไว้',
-    time: "10 ส.ค. 2569, 09:30 น.",
-    unread: true,
-  },
-  {
-    icon: Bell,
-    tone: "primary",
-    title: "มี TOR ใหม่ที่ตรงกับความสนใจของคุณ",
-    body: 'TOR ใหม่ "โครงการพัฒนาระบบบริหารจัดการข้อมูลด้วยปัญญาประดิษฐ์" ตรงกับเงื่อนไขที่คุณบันทึกไว้',
-    time: "9 ส.ค. 2569, 16:15 น.",
-    unread: false,
-  },
-  {
-    icon: CheckCircle2,
-    tone: "success",
-    title: "ข้อมูลที่คุณแจ้งได้รับการแก้ไขแล้ว",
-    body: 'ปัญหาที่คุณแจ้งใน "โครงการพัฒนาระบบขออนุญาตออนไลน์" ได้รับการแก้ไขเรียบร้อยแล้ว',
-    time: "8 ส.ค. 2569, 11:20 น.",
-    unread: false,
-  },
-  {
-    icon: Info,
-    tone: "muted",
-    title: "อัปเดตสถานะ TOR",
-    body: 'สถานะของ "โครงการพัฒนาระบบบริหารโครงสร้างพื้นฐานคลาวด์" เปลี่ยนเป็น เผยแพร่แล้ว',
-    time: "6 ส.ค. 2569, 10:05 น.",
-    unread: false,
-  },
-];
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Bell, CheckCircle2, Info, MessageSquare } from "lucide-react";
+import { SiteHeader } from "@/components/SiteHeader";
+import { useNotifications } from "@/contexts/notification-context";
+import { getNotificationLink } from "@/lib/notification-links";
+
+const TYPE_ICON: Record<string, { icon: typeof Bell; tone: string }> = {
+    tor_match: { icon: Bell, tone: "primary" },
+    feedback_resolved: { icon: CheckCircle2, tone: "success" },
+    new_feedback: { icon: MessageSquare, tone: "muted" },
+};
 
 const toneClass: Record<string, string> = {
-  primary: "bg-accent text-accent-foreground",
-  success: "bg-success/15 text-success",
-  muted: "bg-muted text-muted-foreground",
+    primary: "bg-accent text-accent-foreground",
+    success: "bg-success/15 text-success",
+    muted: "bg-muted text-muted-foreground",
+};
+
+const TABS = [
+    { value: "all", label: "ทั้งหมด" },
+    { value: "unread", label: "ยังไม่อ่าน" },
+    { value: "read", label: "อ่านแล้ว" },
+];
+
+function getToken() {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("token") ?? sessionStorage.getItem("token");
+}
+
+type NotificationItem = {
+    _id: string;
+    type: string;
+    title: string;
+    message: string;
+    isRead: boolean;
+    createdAt: string;
+    relatedId?: string;
 };
 
 export default function NotificationsPage() {
-  return (
-    <div className="min-h-screen bg-background">
-      <SiteHeader />
+    const router = useRouter();
+    const { markAsRead: contextMarkAsRead, markAllAsRead: contextMarkAllAsRead, fetchList } = useNotifications();
+    const [activeTab, setActiveTab] = useState<"all" | "unread" | "read">("all");
+    const [items, setItems] = useState<NotificationItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    useEffect(() => {
+        let cancelled = false;
+        const token = getToken();
+        if (!token) {
+            router.push("/login");
+            return;
+        }
 
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-        <h1 className="text-xl font-semibold tracking-tight">
-          การแจ้งเตือนของฉัน
-        </h1>
+        fetchList(activeTab).then((notifications) => {
+            if (cancelled) return;
+            setItems(notifications);
+            setIsLoading(false);
+        });
 
-        <div className="mt-4 flex items-center justify-between border-b border-border">
-          <div className="flex gap-6 text-sm">
-            {["ทั้งหมด", "ยังไม่อ่าน", "อ่านแล้ว"].map((tab, i) => (
-              <button
-                key={tab}
-                type="button"
-                className={`-mb-px border-b-2 pb-2.5 ${i === 0
-                  ? "border-primary font-medium text-primary"
-                  : "border-transparent text-muted-foreground"
-                  }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
+        return () => {
+            cancelled = true;
+        };
+    }, [activeTab, fetchList, router]);
 
-          <button
-            type="button"
-            className="pb-2.5 text-xs text-primary hover:underline"
-          >
-            ทำเครื่องหมายว่าอ่านทั้งหมด
-          </button>
-        </div>
+    async function markAsRead(id: string) {
+        await contextMarkAsRead(id);
+        setItems((prev) =>
+            prev.map((n) => (n._id === id ? { ...n, isRead: true } : n)),
+        );
+    }
 
-        <ul className="mt-4 space-y-3">
-          {notifications.map((n, i) => (
-            <li
-              key={i}
-              className="flex gap-3 rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)]"
-            >
-              <span
-                className={`flex size-9 shrink-0 items-center justify-center rounded-full ${toneClass[n.tone]}`}
-              >
-                <n.icon className="size-4" />
-              </span>
+    async function markAllAsRead() {
+        await contextMarkAllAsRead();
+        setItems((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    }
 
-              <div className="flex-1">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-sm font-medium">{n.title}</p>
+    return (
+        <div className="min-h-screen bg-background">
+            <SiteHeader />
 
-                  {n.unread ? (
-                    <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" />
-                  ) : null}
+            <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+                <h1 className="text-xl font-semibold tracking-tight">
+                    การแจ้งเตือนของฉัน
+                </h1>
+
+                <div className="mt-4 flex items-center justify-between border-b border-border">
+                    <div className="flex gap-6 text-sm">
+                        {TABS.map((tab) => (
+                            <button
+                                key={tab.value}
+                                type="button"
+                                onClick={() => {
+                                    setIsLoading(true);
+                                    setActiveTab(tab.value as typeof activeTab);
+                                }}
+                                className={`-mb-px cursor-pointer border-b-2 pb-2.5 ${
+                                    activeTab === tab.value
+                                        ? "border-primary font-medium text-primary"
+                                        : "border-transparent text-muted-foreground"
+                                }`}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={markAllAsRead}
+                        className="cursor-pointer pb-2.5 text-xs text-primary hover:underline"
+                    >
+                        ทำเครื่องหมายว่าอ่านทั้งหมด
+                    </button>
                 </div>
 
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {n.body}
-                </p>
+                {isLoading ? (
+                    <p className="mt-4 text-sm text-muted-foreground">กำลังโหลด...</p>
+                ) : items.length === 0 ? (
+                    <p className="mt-4 text-sm text-muted-foreground">
+                        ไม่มีการแจ้งเตือนในหมวดนี้
+                    </p>
+                ) : (
+                    <ul className="mt-4 space-y-3">
+                        {items.map((n) => {
+                            const config = TYPE_ICON[n.type] ?? { icon: Info, tone: "muted" };
+                            const Icon = config.icon;
 
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {n.time}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ul>
+                            return (
+                                <li
+                                    key={n._id}
+                                    onClick={() => {
+                                        if (!n.isRead) markAsRead(n._id);
+                                        router.push(getNotificationLink(n.type, n.relatedId));
+                                    }}
+                                    className={`flex cursor-pointer gap-3 rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)] ${
+                                        !n.isRead ? "" : "opacity-80"
+                                    }`}
+                                >
+                                    <span
+                                        className={`flex size-9 shrink-0 items-center justify-center rounded-full ${toneClass[config.tone]}`}
+                                    >
+                                        <Icon className="size-4" />
+                                    </span>
 
-        <Button variant="outline" className="mt-5 w-full">
-          ดูการแจ้งเตือนทั้งหมด
-        </Button>
-      </main>
-    </div>
-  );
+                                    <div className="flex-1">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <p className="text-sm font-medium">{n.title}</p>
+
+                                            {!n.isRead && (
+                                                <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" />
+                                            )}
+                                        </div>
+
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            {n.message}
+                                        </p>
+
+                                        <p className="mt-2 text-xs text-muted-foreground">
+                                            {new Date(n.createdAt).toLocaleString("th-TH", {
+                                                dateStyle: "long",
+                                                timeStyle: "short",
+                                            })}
+                                        </p>
+                                    </div>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+            </main>
+        </div>
+    );
 }
