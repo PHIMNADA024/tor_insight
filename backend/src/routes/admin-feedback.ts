@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { Feedback } from "../models/feedback.js";
+import { Feedback, type FeedbackDoc } from "../models/feedback.js";
 import { Notification } from "../models/notification.js";
 import { User } from "../models/user.js";
 import { AdminActionLog } from "../models/adminActionLog.js";
@@ -16,7 +16,14 @@ const router = Router();
 router.get("/feedback", requireAuth, requireAdmin, async (req, res) => {
   try {
     const status = typeof req.query.status === "string" ? req.query.status : undefined;
-    const filter = status ? { status } : {};
+    const validStatuses = ["pending", "reviewed", "resolved"] as const;
+
+    if (status && !validStatuses.includes(status as (typeof validStatuses)[number])) {
+      return res.status(400).json({ message: "Invalid feedback status" });
+    }
+
+    const filter: { status?: FeedbackDoc["status"] } = {};
+    if (status) filter.status = status as FeedbackDoc["status"];
 
     const items = await Feedback.find(filter)
       .populate("userId", "name email")

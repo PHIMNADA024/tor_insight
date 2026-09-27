@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { Feedback } from "../models/feedback.js";
+import { Feedback, type FeedbackDoc } from "../models/feedback.js";
 import { Notification } from "../models/notification.js";
 import { User } from "../models/user.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -13,7 +13,12 @@ const VALID_CATEGORIES = [
   "broken_link",
   "app_feedback",
   "other",
-];
+] as const;
+
+function isFeedbackCategory(value: unknown): value is FeedbackDoc["category"] {
+  return typeof value === "string" &&
+    (VALID_CATEGORIES as readonly string[]).includes(value);
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
   incorrect_info: "ข้อมูลไม่ถูกต้อง",
@@ -83,11 +88,11 @@ router.post("/", requireAuth, async (req, res) => {
     const { category, description, torId, torReference } = req.body;
 
     // --- Required fields ---
-    if (!category || typeof category !== "string") {
+    if (typeof category !== "string" || category.length === 0) {
       return res.status(400).json({ message: "Category is required" });
     }
 
-    if (!VALID_CATEGORIES.includes(category)) {
+    if (!isFeedbackCategory(category)) {
       return res.status(400).json({ message: "Invalid category" });
     }
 
@@ -115,7 +120,7 @@ router.post("/", requireAuth, async (req, res) => {
       typeof torReference === "string" ? torReference.trim() : "";
 
     if (
-      CATEGORIES_REQUIRING_REFERENCE.includes(category) &&
+      CATEGORIES_REQUIRING_REFERENCE.some((requiredCategory) => requiredCategory === category) &&
       !torId &&
       !trimmedReference
     ) {      
