@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Noto_Sans_Thai } from "next/font/google";
+import { NotificationProvider } from "@/contexts/notification-context";
+import { NotificationToastContainer } from "@/components/NotificationToastContainer";
 import "./globals.css";
 
 const notoSansThai = Noto_Sans_Thai({
@@ -21,7 +23,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="th" className={`${notoSansThai.variable} h-full antialiased`}>
       <body className={`${notoSansThai.className} min-h-full bg-background text-foreground`}>
-        {children}
+        <NotificationProvider>
+            {children}
+            <NotificationToastContainer />
+        </NotificationProvider>
       </body>
     </html>
   );

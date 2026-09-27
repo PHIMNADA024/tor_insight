@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, CheckCircle2, Info } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
-import { Button } from "@/components/ui/button";
+import { useNotifications } from "@/contexts/notification-context";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5050";
 
@@ -41,12 +41,13 @@ type NotificationItem = {
 
 export default function NotificationsPage() {
     const router = useRouter();
+    const { markAsRead: contextMarkAsRead, markAllAsRead: contextMarkAllAsRead, fetchList } = useNotifications();
     const [activeTab, setActiveTab] = useState<"all" | "unread" | "read">("all");
     const [items, setItems] = useState<NotificationItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    async function loadNotifications(filter: string) {
+    async function loadNotifications(filter: "all" | "unread" | "read") {
         const token = getToken();
         if (!token) {
             router.push("/login");
@@ -56,21 +57,9 @@ export default function NotificationsPage() {
         setIsLoading(true);
         setError(null);
 
-        try {
-            const query = filter !== "all" ? `?filter=${filter}` : "";
-            const res = await fetch(`${API_URL}/api/notifications${query}`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-
-            if (!res.ok) throw new Error("failed");
-
-            const data = await res.json();
-            setItems(data.notifications ?? []);
-        } catch {
-            setError("โหลดการแจ้งเตือนไม่สำเร็จ");
-        } finally {
-            setIsLoading(false);
-        }
+        const notifications = await fetchList(filter);
+        setItems(notifications);
+        setIsLoading(false);
     }
 
     useEffect(() => {
@@ -78,31 +67,15 @@ export default function NotificationsPage() {
     }, [activeTab]);
 
     async function markAsRead(id: string) {
-        const token = getToken();
-        try {
-            await fetch(`${API_URL}/api/notifications/${id}/read`, {
-                method: "PATCH",
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            setItems((prev) =>
-                prev.map((n) => (n._id === id ? { ...n, isRead: true } : n)),
-            );
-        } catch {
-            // non-critical, ignore
-        }
+        await contextMarkAsRead(id);
+        setItems((prev) =>
+            prev.map((n) => (n._id === id ? { ...n, isRead: true } : n)),
+        );
     }
 
     async function markAllAsRead() {
-        const token = getToken();
-        try {
-            await fetch(`${API_URL}/api/notifications/read-all`, {
-                method: "PATCH",
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            setItems((prev) => prev.map((n) => ({ ...n, isRead: true })));
-        } catch {
-            setError("ทำเครื่องหมายว่าอ่านทั้งหมดไม่สำเร็จ");
-        }
+        await contextMarkAllAsRead();
+        setItems((prev) => prev.map((n) => ({ ...n, isRead: true })));
     }
 
     return (

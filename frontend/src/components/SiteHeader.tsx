@@ -6,7 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { Bell, LogOut, Search, UserRound, X, Settings, ChevronDown, ShieldCheck, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
+import { useNotifications } from "@/contexts/notification-context";
 
 const nav = [
   { label: "หน้าแรก", href: "/" },
@@ -19,7 +19,7 @@ export function SiteHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isLoaded, logout } = useAuth();
-  const unreadCount = useUnreadNotifications(!!user);
+  const { unreadCount } = useNotifications();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
