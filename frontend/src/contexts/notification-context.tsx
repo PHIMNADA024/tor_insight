@@ -41,6 +41,20 @@ const NotificationContext = createContext<NotificationContextValue | null>(null)
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
     const { user } = useAuth();
+    return (
+        <NotificationStateProvider key={user?.id ?? "anonymous"} user={user}>
+            {children}
+        </NotificationStateProvider>
+    );
+}
+
+function NotificationStateProvider({
+    children,
+    user,
+}: {
+    children: React.ReactNode;
+    user: ReturnType<typeof useAuth>["user"];
+}) {
     const [unreadCount, setUnreadCount] = useState(0);
     const [toasts, setToasts] = useState<NotificationItem[]>([]);
     const lastSeenRef = useRef<string | null>(null);
@@ -136,16 +150,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     useEffect(() => {
         if (!user) {
-            setUnreadCount(0);
-            setToasts([]);
             isFirstCheckRef.current = true;
             lastSeenRef.current = null;
             return;
         }
 
-        refresh();
+        const initialRefresh = setTimeout(() => {
+            void refresh();
+        }, 0);
         const interval = setInterval(refresh, POLL_INTERVAL_MS);
-        return () => clearInterval(interval);
+        return () => {
+            clearTimeout(initialRefresh);
+            clearInterval(interval);
+        };
     }, [user, refresh]);
 
     return (

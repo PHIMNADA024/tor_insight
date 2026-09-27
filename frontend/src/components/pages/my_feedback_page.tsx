@@ -61,9 +61,9 @@ export default function MyFeedbackPage() {
 
     const needsTorReference = category !== "app_feedback" && category !== "other";
 
-    async function loadFeedback() {
+    async function loadFeedback(): Promise<FeedbackItem[]> {
         const token = getToken();
-        if (!token) return;
+        if (!token) return [];
 
         try {
             const res = await fetch(`${API_URL}/api/feedback/mine`, {
@@ -71,11 +71,10 @@ export default function MyFeedbackPage() {
             });
             if (!res.ok) throw new Error("failed");
             const data = await res.json();
-            setItems(data.feedback ?? []);
+            return data.feedback ?? [];
         } catch {
             // silently ignore — form still usable even if list fails
-        } finally {
-            setIsLoading(false);
+            return [];
         }
     }
 
@@ -85,7 +84,16 @@ export default function MyFeedbackPage() {
             router.push("/login");
             return;
         }
-        loadFeedback();
+        let cancelled = false;
+        loadFeedback().then((feedback) => {
+            if (cancelled) return;
+            setItems(feedback);
+            setIsLoading(false);
+        });
+
+        return () => {
+            cancelled = true;
+        };
     }, [router]);
     
 async function handleSubmit(e: React.FormEvent) {
@@ -142,7 +150,7 @@ async function handleSubmit(e: React.FormEvent) {
         setFormMessage("ส่งข้อเสนอแนะเรียบร้อยแล้ว ขอบคุณสำหรับความคิดเห็นของคุณ");
         setDescription("");
         setTorReference("");
-        loadFeedback();
+        loadFeedback().then(setItems);
     } catch {
         setFormError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
     } finally {

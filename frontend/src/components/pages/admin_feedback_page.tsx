@@ -69,30 +69,31 @@ export default function AdminFeedbackPage() {
     const [savingId, setSavingId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    async function loadFeedback(status: string) {
-        setIsLoading(true);
-        setError(null);
+    useEffect(() => {
+        let cancelled = false;
+        const token = getToken();
+        const query = activeStatus ? `?status=${activeStatus}` : "";
 
-        try {
-            const token = getToken();
-            const query = status ? `?status=${status}` : "";
-            const res = await fetch(`${API_URL}/api/admin/feedback${query}`, {
-                headers: { Authorization: `Bearer ${token}` },
+        fetch(`${API_URL}/api/admin/feedback${query}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+            .then((res) => {
+                if (!res.ok) throw new Error("failed");
+                return res.json();
+            })
+            .then((data) => {
+                if (!cancelled) setItems(data.feedback ?? []);
+            })
+            .catch(() => {
+                if (!cancelled) setError("โหลดข้อมูลไม่สำเร็จ");
+            })
+            .finally(() => {
+                if (!cancelled) setIsLoading(false);
             });
 
-            if (!res.ok) throw new Error("failed");
-
-            const data = await res.json();
-            setItems(data.feedback ?? []);
-        } catch {
-            setError("โหลดข้อมูลไม่สำเร็จ");
-        } finally {
-            setIsLoading(false);
-        }
-    }
-
-    useEffect(() => {
-        loadFeedback(activeStatus);
+        return () => {
+            cancelled = true;
+        };
     }, [activeStatus]);
 
     function toggleExpand(id: string) {
@@ -164,7 +165,11 @@ export default function AdminFeedbackPage() {
                     {STATUS_TABS.map((tab) => (
                         <button
                             key={tab.value}
-                            onClick={() => setActiveStatus(tab.value)}
+                            onClick={() => {
+                                setIsLoading(true);
+                                setError(null);
+                                setActiveStatus(tab.value);
+                            }}
                             className={`cursor-pointer border-b-2 px-3 pb-2 text-sm ${
                                 activeStatus === tab.value
                                     ? "border-primary font-medium text-primary"

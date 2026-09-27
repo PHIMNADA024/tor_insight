@@ -7,8 +7,6 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { useNotifications } from "@/contexts/notification-context";
 import { getNotificationLink } from "@/lib/notification-links";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5050";
-
 const TYPE_ICON: Record<string, { icon: typeof Bell; tone: string }> = {
     tor_match: { icon: Bell, tone: "primary" },
     feedback_resolved: { icon: CheckCircle2, tone: "success" },
@@ -48,26 +46,24 @@ export default function NotificationsPage() {
     const [activeTab, setActiveTab] = useState<"all" | "unread" | "read">("all");
     const [items, setItems] = useState<NotificationItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    async function loadNotifications(filter: "all" | "unread" | "read") {
+    useEffect(() => {
+        let cancelled = false;
         const token = getToken();
         if (!token) {
             router.push("/login");
             return;
         }
 
-        setIsLoading(true);
-        setError(null);
+        fetchList(activeTab).then((notifications) => {
+            if (cancelled) return;
+            setItems(notifications);
+            setIsLoading(false);
+        });
 
-        const notifications = await fetchList(filter);
-        setItems(notifications);
-        setIsLoading(false);
-    }
-
-    useEffect(() => {
-        loadNotifications(activeTab);
-    }, [activeTab]);
+        return () => {
+            cancelled = true;
+        };
+    }, [activeTab, fetchList, router]);
 
     async function markAsRead(id: string) {
         await contextMarkAsRead(id);
@@ -96,7 +92,10 @@ export default function NotificationsPage() {
                             <button
                                 key={tab.value}
                                 type="button"
-                                onClick={() => setActiveTab(tab.value as typeof activeTab)}
+                                onClick={() => {
+                                    setIsLoading(true);
+                                    setActiveTab(tab.value as typeof activeTab);
+                                }}
                                 className={`-mb-px cursor-pointer border-b-2 pb-2.5 ${
                                     activeTab === tab.value
                                         ? "border-primary font-medium text-primary"
@@ -116,8 +115,6 @@ export default function NotificationsPage() {
                         ทำเครื่องหมายว่าอ่านทั้งหมด
                     </button>
                 </div>
-
-                {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
 
                 {isLoading ? (
                     <p className="mt-4 text-sm text-muted-foreground">กำลังโหลด...</p>
