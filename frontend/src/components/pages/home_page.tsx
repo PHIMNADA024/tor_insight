@@ -1,5 +1,7 @@
-"use client"; 
+"use client";
 
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
     Search,
     Globe,
@@ -17,10 +19,10 @@ import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatTHB, categories } from "@/lib/mock-data";
-import { useEffect, useState } from "react";
-import Link from "next/link";
 
 const catIcons = [Globe, Smartphone, Brain, BarChart3, MapPin];
+
+/** Readable labels for the category values stored in the database. */
 const CATEGORY_LABELS: Record<string, string> = {
     software: "ซอฟต์แวร์",
     it_equipment: "อุปกรณ์ไอที",
@@ -40,15 +42,15 @@ type TorSummary = {
 
 export function HomePage() {
     // Records from the API. Empty until the fetch resolves.
-    const [tors, setTors] = useState<TorSummary[]>([]); 
+    const [tors, setTors] = useState<TorSummary[]>([]);
+
     useEffect(() => {
         fetch("http://localhost:4000/api/tors?limit=4")
-        .then((res) => res.json())
-        .then((data) => setTors(data.results))
-        .catch((err) => console.error("Failed to load TOR:s", err));
-    }, []
-    );
-    
+            .then((res) => res.json())
+            .then((data) => setTors(data.results))
+            .catch((err) => console.error("Failed to load TORs:", err));
+    }, []);
+
     return (
         <div className="min-h-screen bg-background">
             <SiteHeader />
@@ -130,14 +132,15 @@ export function HomePage() {
                                             </Link>
                                         </td>
                                         <td className="px-4 py-3 text-muted-foreground">{t.agency}</td>
+                                        <td className="px-4 py-3">{formatTHB(t.budgetAmount ?? 0)}</td>
                                         <td className="px-4 py-3 text-muted-foreground">
                                             {t.publishedDate
                                                 ? new Date(t.publishedDate).toLocaleDateString("th-TH")
                                                 : "-"}
-                                        </td>                                     
+                                        </td>
                                         <td className="px-4 py-3">
                                             <span className="rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground">
-                                                {CATEGORY_LABELS[t.category] ?? t.category}                                            
+                                                {CATEGORY_LABELS[t.category] ?? t.category}
                                             </span>
                                         </td>
                                     </tr>
