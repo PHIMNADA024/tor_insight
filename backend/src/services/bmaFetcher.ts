@@ -38,6 +38,38 @@ function toGregorianYear(buddhistYear: number): number {
   return buddhistYear - 543;
 }
 
+const BMA_BASE_URL =
+  "https://opencontract.bangkok.go.th/assets/data/output/yearly";
+
+/**
+ * Current Thai fiscal year in the Buddhist calendar.
+ * Fiscal years start 1 October, so October 2026 is FY2570.
+ */
+export function currentFiscalYear(date = new Date()): number {
+  const buddhistYear = date.getFullYear() + 543;
+  return date.getMonth() >= 9 ? buddhistYear + 1 : buddhistYear;
+}
+
+/** Downloads one fiscal year's OCDS file and saves it to disk. */
+export async function downloadBmaFile(
+  fiscalYear: number,
+  destDir = "data",
+): Promise<string> {
+  const url = `${BMA_BASE_URL}/ocds_releases_${fiscalYear}.json`;
+  const res = await fetch(url);
+
+  if (!res.ok) {
+    throw new Error(`Download failed for FY${fiscalYear}: HTTP ${res.status}`);
+  }
+
+  const body = Buffer.from(await res.arrayBuffer());
+  fs.mkdirSync(destDir, { recursive: true });
+
+  const filePath = `${destDir}/bma${fiscalYear}.json`;
+  fs.writeFileSync(filePath, body);
+  return filePath;
+}
+
 /** Maps one OCDS release to our TOR shape. Returns null if unusable. */
 function mapRelease(release: any) {
   const ocid = release.ocid;
@@ -109,11 +141,19 @@ export async function runBmaSync(
         continue;
       }
 
+      // BMA rewrites release.date every night when it regenerates the file,
+      // so it can't be used as a publication date. We keep the date from the
+      // first time we saw the record, and refresh sourceUpdatedAt every run.
+      const { publishedDate, ...rest } = doc;
+
       // Upsert on ocid: existing records are updated, new ones created.
       // This is what prevents duplicates across repeated runs.
       const result = await Tor.updateOne(
         { ocid: doc.ocid },
-        { $set: doc, $setOnInsert: { status: "draft" } },
+        {
+          $set: rest,
+          $setOnInsert: { status: "draft", publishedDate },
+        },
         { upsert: true },
       );
 
