@@ -38,6 +38,7 @@ const items = [
     },
     {
         label: "ผู้ใช้งาน",
+        href: "/admin/users",
         icon: Users,
     },
 ];
