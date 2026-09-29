@@ -72,7 +72,6 @@ export function handleAuthError(status: number, message: string) {
             sessionStorage.removeItem("token");
             sessionStorage.removeItem("user");
             sessionStorage.setItem("authErrorMessage", displayMessage);
-            window.location.href = "/login";
             return true;
         }
     }

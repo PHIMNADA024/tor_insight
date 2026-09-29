@@ -56,35 +56,50 @@ export default function AdminUsersPage() {
     const [actioningId, setActioningId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-    async function loadUsers(searchTerm = "") {
+    async function fetchUsers(searchTerm = ""): Promise<UserItem[]> {
+        const token = getToken();
+        const query = searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : "";
+        const res = await fetch(`${API_URL}/api/admin/users${query}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!res.ok) throw new Error("failed");
+
+        const data = await res.json();
+        return data.users ?? [];
+    }
+
+    useEffect(() => {
+        let cancelled = false;
+
+        fetchUsers()
+            .then((loadedUsers) => {
+                if (!cancelled) setUsers(loadedUsers);
+            })
+            .catch(() => {
+                if (!cancelled) setError("โหลดข้อมูลผู้ใช้งานไม่สำเร็จ");
+            })
+            .finally(() => {
+                if (!cancelled) setIsLoading(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    async function handleSearchSubmit(e: React.FormEvent) {
+        e.preventDefault();
         setIsLoading(true);
         setError(null);
 
         try {
-            const token = getToken();
-            const query = searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : "";
-            const res = await fetch(`${API_URL}/api/admin/users${query}`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-
-            if (!res.ok) throw new Error("failed");
-
-            const data = await res.json();
-            setUsers(data.users ?? []);
+            setUsers(await fetchUsers(search));
         } catch {
             setError("โหลดข้อมูลผู้ใช้งานไม่สำเร็จ");
         } finally {
             setIsLoading(false);
         }
-    }
-
-    useEffect(() => {
-        loadUsers();
-    }, []);
-
-    function handleSearchSubmit(e: React.FormEvent) {
-        e.preventDefault();
-        loadUsers(search);
     }
 
     async function handleToggleStatus(user: UserItem) {

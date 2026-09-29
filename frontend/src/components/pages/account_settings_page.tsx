@@ -89,12 +89,16 @@ export default function AccountSettingsPage() {
             .then(async (res) => {
                 if (!res.ok) {
                     const data = await res.json();
-                    if (handleAuthError(res.status, data.message)) return;
+                    if (handleAuthError(res.status, data.message)) {
+                        router.push("/login");
+                        return;
+                    }
                     throw new Error("failed");
                 }
                 return res.json();
             })
-            .then((data: Profile) => {
+            .then((data: Profile | undefined) => {
+                if (!data) return;
                 setProfile(data);
                 setName(data.name);
                 setCriteria({ ...EMPTY_CRITERIA, ...data.interestCriteria });

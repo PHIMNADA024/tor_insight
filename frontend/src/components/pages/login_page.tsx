@@ -67,8 +67,8 @@ async function handleSubmit(e: React.FormEvent) {
 useEffect(() => {
     const storedError = sessionStorage.getItem("authErrorMessage");
     if (storedError) {
-        setError(storedError);
         sessionStorage.removeItem("authErrorMessage");
+        window.setTimeout(() => setError(storedError), 0);
     }
 }, []);
 
