@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Search } from "lucide-react";
@@ -21,43 +21,56 @@ function LoginPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    async function handleSubmit(e: React.FormEvent) {
-        e.preventDefault();
-        setError(null);
-        setIsSubmitting(true);
+async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
 
-        try {
-            const res = await fetch(`${API_URL}/api/auth/login`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, password }),
-            });
+    try {
+        const res = await fetch(`${API_URL}/api/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+        });
 
-            const data = await res.json();
+        const data = await res.json();
 
-            if (!res.ok) {
-                if (res.status === 403 && data.userId) {
-                    router.push(
-                        `/verify-email?email=${encodeURIComponent(email)}`,
-                    );
-                    return;
-                }
-
-                setError(data.message ?? "เข้าสู่ระบบไม่สำเร็จ");
+        if (!res.ok) {
+            if (res.status === 403 && data.userId) {
+                router.push(`/verify-email?email=${encodeURIComponent(email)}`);
                 return;
             }
 
-            const storage = rememberMe ? localStorage : sessionStorage;
-            storage.setItem("token", data.token);
-            storage.setItem("user", JSON.stringify(data.user));
+            if (res.status === 403 && data.message?.includes("disabled")) {
+                setError(
+                    "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบเพื่อขอความช่วยเหลือ",
+                );
+                return;
+            }
 
-            router.push("/");
-        } catch {
-            setError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
-        } finally {
-            setIsSubmitting(false);
+            setError(data.message ?? "เข้าสู่ระบบไม่สำเร็จ");
+            return;
         }
+
+        const storage = rememberMe ? localStorage : sessionStorage;
+        storage.setItem("token", data.token);
+        storage.setItem("user", JSON.stringify(data.user));
+
+        router.push("/");
+    } catch {
+        setError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+    } finally {
+        setIsSubmitting(false);
     }
+}
+
+useEffect(() => {
+    const storedError = sessionStorage.getItem("authErrorMessage");
+    if (storedError) {
+        sessionStorage.removeItem("authErrorMessage");
+        window.setTimeout(() => setError(storedError), 0);
+    }
+}, []);
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-[image:var(--gradient-hero)] px-4 py-12">

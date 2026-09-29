@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { handleAuthError } from "@/hooks/use-auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -86,10 +87,18 @@ export default function AccountSettingsPage() {
             headers: { Authorization: `Bearer ${token}` },
         })
             .then(async (res) => {
-                if (!res.ok) throw new Error("failed");
+                if (!res.ok) {
+                    const data = await res.json();
+                    if (handleAuthError(res.status, data.message)) {
+                        router.push("/login");
+                        return;
+                    }
+                    throw new Error("failed");
+                }
                 return res.json();
             })
-            .then((data: Profile) => {
+            .then((data: Profile | undefined) => {
+                if (!data) return;
                 setProfile(data);
                 setName(data.name);
                 setCriteria({ ...EMPTY_CRITERIA, ...data.interestCriteria });

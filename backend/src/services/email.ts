@@ -95,3 +95,18 @@ export async function sendNewFeedbackAdminEmail(
     `,
   });
 }
+
+export async function sendAccountDisabledEmail(email: string, name: string) {
+  await transporter.sendMail({
+    from: `"TOR Insight" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: "TOR Insight - บัญชีของคุณถูกระงับการใช้งาน",
+    html: `
+      <div>
+        <h2>TOR Insight</h2>
+        <p>สวัสดีคุณ ${name},</p>
+        <p>บัญชีของคุณถูกระงับการใช้งานชั่วคราว หากคุณคิดว่านี่เป็นความผิดพลาด กรุณาติดต่อทีมงานผู้ดูแลระบบ</p>
+      </div>
+    `,
+  });
+}

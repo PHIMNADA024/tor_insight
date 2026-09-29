@@ -13,6 +13,7 @@ import torRoutes from "./routes/tor.js";
 import feedbackRoutes from "./routes/feedback.js";
 import adminFeedbackRoutes from "./routes/admin-feedback.js";
 import notificationRoutes from "./routes/notifications.js";
+import adminUserRoutes from "./routes/admin-users.js";
 import { generalLimiter } from "./middleware/rateLimit.js";
 import { sanitizeBody } from "./middleware/sanitize.js";
 import { notFoundHandler } from "./middleware/notFound.js";
@@ -64,6 +65,7 @@ app.use("/api/tors", torRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/admin", adminFeedbackRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/admin", adminUserRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
