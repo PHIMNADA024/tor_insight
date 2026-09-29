@@ -55,3 +55,26 @@ export function useAuth() {
 
   return { user, isLoaded, logout };
 }
+
+export function handleAuthError(status: number, message: string) {
+    if (status === 401 || status === 403) {
+        let displayMessage = null;
+
+        if (message?.includes("disabled")) {
+            displayMessage = "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบเพื่อขอความช่วยเหลือ";
+        } else if (message?.includes("Invalid or expired token")) {
+            displayMessage = "เซสชันของคุณหมดอายุหรือบัญชีไม่พร้อมใช้งาน กรุณาเข้าสู่ระบบอีกครั้ง";
+        }
+
+        if (displayMessage) {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            sessionStorage.removeItem("token");
+            sessionStorage.removeItem("user");
+            sessionStorage.setItem("authErrorMessage", displayMessage);
+            window.location.href = "/login";
+            return true;
+        }
+    }
+    return false;
+}
