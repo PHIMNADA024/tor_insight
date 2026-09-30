@@ -1,30 +1,38 @@
 /**
  * Runs a BMA sync manually from the command line.
  *
- * Without arguments, downloads the current fiscal year from BMA first:
- *   npx tsx src/scripts/runSync.ts
- *
- * With a path, syncs a local file instead:
- *   npx tsx src/scripts/runSync.ts data/bma2568.json
+ *   npx tsx src/scripts/runSync.ts              current fiscal year
+ *   npx tsx src/scripts/runSync.ts 2568         a specific fiscal year
+ *   npx tsx src/scripts/runSync.ts data/x.json  a local file
  */
 import "dotenv/config";
 import { connectDB, disconnectDB } from "../db.js";
 import {
   currentFiscalYear,
-  downloadBmaFile,
   runBmaSync,
+  syncFiscalYear,
 } from "../services/bmaFetcher.js";
 
-const localFile = process.argv[2];
-
-const file = localFile ?? (await downloadBmaFile(currentFiscalYear()));
-console.log(`Syncing ${file}`);
+const arg = process.argv[2];
 
 await connectDB();
 
 try {
-  const result = await runBmaSync(file, "manual");
+  let result;
+
+  if (!arg) {
+    result = await syncFiscalYear(currentFiscalYear(), "manual");
+  } else if (/^\d{4}$/.test(arg)) {
+    result = await syncFiscalYear(Number(arg), "manual");
+  } else {
+    result = await runBmaSync(arg, "manual");
+  }
+
   console.log(result);
+} catch (error) {
+  // The failure is already recorded in SyncLog, so just report it briefly.
+  console.error("Sync failed:", error instanceof Error ? error.message : error);
+  process.exitCode = 1;
 } finally {
   await disconnectDB();
 }

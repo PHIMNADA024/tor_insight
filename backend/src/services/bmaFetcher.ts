@@ -50,21 +50,71 @@ export function currentFiscalYear(date = new Date()): number {
   return date.getMonth() >= 9 ? buddhistYear + 1 : buddhistYear;
 }
 
-/** Downloads one fiscal year's OCDS file and saves it to disk. */
+/** Thrown for failures that retrying won't fix, like a missing file. */
+class NonRetryableError extends Error {}
+
+/**
+ * Runs an async function, retrying on failure with increasing delays
+ * (2s, 4s, ...). Gives up immediately on NonRetryableError.
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  attempts = 3,
+  baseDelayMs = 2000,
+): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (error instanceof NonRetryableError || attempt >= attempts) {
+        throw error;
+      }
+      const delay = baseDelayMs * 2 ** (attempt - 1);
+      console.warn(`Attempt ${attempt} failed, retrying in ${delay / 1000}s`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
+/*
+ * Downloads one fiscal year's OCDS file and saves it to disk.
+ * Retries network and server errors; fails immediately on client
+ * errors like 403, which BMA returns for files not yet published.
+ */
 export async function downloadBmaFile(
   fiscalYear: number,
   destDir = "data",
 ): Promise<string> {
   const url = `${BMA_BASE_URL}/ocds_releases_${fiscalYear}.json`;
-  const res = await fetch(url);
 
-  if (!res.ok) {
-    throw new Error(`Download failed for FY${fiscalYear}: HTTP ${res.status}`);
-  }
+  const body = await withRetry(async () => {
+    const res = await fetch(url);
 
-  const body = Buffer.from(await res.arrayBuffer());
+      if (res.headers.get("cf-mitigated") === "challenge") {
+        throw new NonRetryableError(
+        `Blocked by Cloudflare bot protection (HTTP ${res.status})`,
+        );
+    }
+
+    // 4xx means the request itself is wrong (BMA returns 403 for files
+    // that don't exist yet), so retrying won't help. 408 and 429 are
+    // the exceptions: waiting and trying again can fix those.
+    const isClientError = res.status >= 400 && res.status < 500;
+    const isRetryableClientError = res.status === 408 || res.status === 429;
+
+    if (isClientError && !isRetryableClientError) {
+      throw new NonRetryableError(
+        `No file available for FY${fiscalYear} (HTTP ${res.status})`,
+      );
+    }
+    if (!res.ok) {
+      throw new Error(`Download failed for FY${fiscalYear}: HTTP ${res.status}`);
+    }
+
+    return Buffer.from(await res.arrayBuffer());
+  });
+
   fs.mkdirSync(destDir, { recursive: true });
-
   const filePath = `${destDir}/bma${fiscalYear}.json`;
   fs.writeFileSync(filePath, body);
   return filePath;
@@ -115,66 +165,100 @@ function mapRelease(release: any) {
   };
 }
 
+type SyncCounts = {
+  inserted: number;
+  updated: number;
+  skipped: number;
+  read: number;
+};
+
+/** Parses an OCDS file and upserts every usable release. Returns counts. */
+async function processFile(filePath: string): Promise<SyncCounts> {
+  const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  const releases: any[] = parsed.releases ?? parsed;
+
+  let inserted = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const release of releases) {
+    const doc = mapRelease(release);
+
+    if (!doc) {
+      skipped++;
+      continue;
+    }
+
+    // BMA rewrites release.date every night when it regenerates the file,
+    // so it can't be used as a publication date. We keep the date from the
+    // first time we saw the record, and refresh sourceUpdatedAt every run.
+    const { publishedDate, ...rest } = doc;
+
+    // Upsert on ocid: existing records are updated, new ones created.
+    // This is what prevents duplicates across repeated runs.
+    const result = await Tor.updateOne(
+      { ocid: doc.ocid },
+      {
+        $set: rest,
+        $setOnInsert: { status: "draft", publishedDate },
+      },
+      { upsert: true },
+    );
+
+    if (result.upsertedCount > 0) inserted++;
+    else if (result.modifiedCount > 0) updated++;
+    else skipped++;
+  }
+
+  return { inserted, updated, skipped, read: releases.length };
+}
+
+/** A run still in_progress after this long is assumed to have died. */
+const STALE_AFTER_MS = 60 * 60 * 1000;
+
 /**
- * Reads a BMA OCDS file and upserts every usable release into the
- * TOR collection. Records one SyncLog entry per run (FR-07, FR-08, FR-23).
+ * Marks runs stuck in "in_progress" as failed. A process killed mid-sync
+ * never reaches the code that updates its log, so it would otherwise
+ * look like it's still running forever.
  */
-export async function runBmaSync(
-  filePath: string,
-  trigger: "scheduled" | "manual" = "scheduled",
-) {
+async function markStaleRuns(): Promise<void> {
+  const cutoff = new Date(Date.now() - STALE_AFTER_MS);
+
+  await SyncLog.updateMany(
+    { status: "in_progress", startedAt: { $lt: cutoff } },
+    {
+      status: "failed",
+      finishedAt: new Date(),
+      errorMessage: "Interrupted before finishing",
+    },
+  );
+}
+
+/**
+ * Wraps a sync in a SyncLog entry (FR-23). The entry is created first,
+ * so any failure inside `work` — download or processing — gets recorded.
+ */
+async function withSyncLog(
+  trigger: "scheduled" | "manual",
+  work: () => Promise<SyncCounts>,
+): Promise<SyncCounts> {
+  await markStaleRuns();
   const log = await SyncLog.create({ sourceId: "bma", trigger });
 
   try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    const releases: any[] = parsed.releases ?? parsed;
-
-    let inserted = 0;
-    let updated = 0;
-    let skipped = 0;
-
-    for (const release of releases) {
-      const doc = mapRelease(release);
-
-      if (!doc) {
-        skipped++;
-        continue;
-      }
-
-      // BMA rewrites release.date every night when it regenerates the file,
-      // so it can't be used as a publication date. We keep the date from the
-      // first time we saw the record, and refresh sourceUpdatedAt every run.
-      const { publishedDate, ...rest } = doc;
-
-      // Upsert on ocid: existing records are updated, new ones created.
-      // This is what prevents duplicates across repeated runs.
-      const result = await Tor.updateOne(
-        { ocid: doc.ocid },
-        {
-          $set: rest,
-          $setOnInsert: { status: "draft", publishedDate },
-        },
-        { upsert: true },
-      );
-
-      if (result.upsertedCount > 0) inserted++;
-      else if (result.modifiedCount > 0) updated++;
-      else skipped++;
-    }
-
+    const counts = await work();
     await SyncLog.updateOne(
       { _id: log._id },
       {
         status: "success",
         finishedAt: new Date(),
-        recordsRead: releases.length,
-        recordsInserted: inserted,
-        recordsUpdated: updated,
-        recordsSkipped: skipped,
+        recordsRead: counts.read,
+        recordsInserted: counts.inserted,
+        recordsUpdated: counts.updated,
+        recordsSkipped: counts.skipped,
       },
     );
-
-    return { inserted, updated, skipped, read: releases.length };
+    return counts;
   } catch (error) {
     await SyncLog.updateOne(
       { _id: log._id },
@@ -186,4 +270,23 @@ export async function runBmaSync(
     );
     throw error;
   }
+}
+
+/** Syncs a local OCDS file (FR-07, FR-08). */
+export function runBmaSync(
+  filePath: string,
+  trigger: "scheduled" | "manual" = "scheduled",
+) {
+  return withSyncLog(trigger, () => processFile(filePath));
+}
+
+/** Downloads a fiscal year from BMA and syncs it, logging any failure. */
+export function syncFiscalYear(
+  fiscalYear: number,
+  trigger: "scheduled" | "manual" = "scheduled",
+) {
+  return withSyncLog(trigger, async () => {
+    const filePath = await downloadBmaFile(fiscalYear);
+    return processFile(filePath);
+  });
 }
