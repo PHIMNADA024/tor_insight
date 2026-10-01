@@ -27,20 +27,15 @@ export const emptyFilters: SearchFilters = {
   budgetMax: "",
 };
 
-/** Matches the Tor model's `category` values (backend/src/models/tor.ts). */
-const CATEGORY_OPTIONS = [
-  { value: "software", label: "ซอฟต์แวร์" },
-  { value: "it_equipment", label: "ครุภัณฑ์คอมพิวเตอร์/ไอที" },
-];
+/** Display labels for the Tor model's `category` values (backend/src/models/tor.ts). */
+export const CATEGORY_LABELS: Record<string, string> = {
+  software: "ซอฟต์แวร์",
+  it_equipment: "ครุภัณฑ์คอมพิวเตอร์/ไอที",
+};
 
-function currentFiscalYear() {
-  // BMA fiscal years run Oct–Sep; TORs are stored in Gregorian years.
-  return new Date().getFullYear();
-}
-
-function defaultFiscalYearOptions() {
-  const start = currentFiscalYear();
-  return Array.from({ length: 5 }, (_, i) => start - i);
+/** Fiscal years are stored in Gregorian; BMA staff refer to them in Buddhist Era. */
+export function toBuddhistYear(gregorianYear: number) {
+  return gregorianYear + 543;
 }
 
 type SelectFieldProps = {
@@ -76,8 +71,9 @@ export type FilterPanelProps = {
   onChange: (value: SearchFilters) => void;
   onApply: () => void;
   onReset: () => void;
-  /** Agencies vary per data source, so the caller supplies the option list. */
+  /** Option lists come from GET /api/tors/filters so they match what's actually searchable. */
   agencyOptions?: string[];
+  categoryOptions?: string[];
   fiscalYearOptions?: number[];
 };
 
@@ -87,7 +83,8 @@ export function FilterPanel({
   onApply,
   onReset,
   agencyOptions = [],
-  fiscalYearOptions = defaultFiscalYearOptions(),
+  categoryOptions = [],
+  fiscalYearOptions = [],
 }: FilterPanelProps) {
   function setField<K extends keyof SearchFilters>(key: K, fieldValue: SearchFilters[K]) {
     onChange({ ...value, [key]: fieldValue });
@@ -131,7 +128,7 @@ export function FilterPanel({
           value={value.category}
           onChange={(v) => setField("category", v)}
           allLabel="ทุกหมวดหมู่"
-          options={CATEGORY_OPTIONS}
+          options={categoryOptions.map((c) => ({ value: c, label: CATEGORY_LABELS[c] ?? c }))}
         />
 
         <SelectField
@@ -139,7 +136,10 @@ export function FilterPanel({
           value={value.fiscalYear}
           onChange={(v) => setField("fiscalYear", v)}
           allLabel="ทุกปี"
-          options={fiscalYearOptions.map((y) => ({ value: String(y), label: String(y) }))}
+          options={fiscalYearOptions.map((y) => ({
+            value: String(y),
+            label: String(toBuddhistYear(y)),
+          }))}
         />
 
         <div className="space-y-1.5">
