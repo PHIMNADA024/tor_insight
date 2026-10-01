@@ -1,4 +1,5 @@
 import { Router } from "express";
+import mongoose from "mongoose";
 import { Tor } from "../models/tor.js";
 import { searchLimiter } from "../middleware/rateLimit.js";
 
@@ -137,6 +138,51 @@ router.get("/", searchLimiter, async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Search failed" });
+  }
+});
+
+/**
+ * Single TOR detail
+ * GET /api/tors/:id
+ *
+ * Only published records are returned, same rule as search,
+ * so a draft can't be read by guessing its id.
+ */
+router.get("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: "Invalid TOR id" });
+    }
+
+    const doc = await Tor.findOne({ _id: id, status: "published" });
+    if (!doc) {
+      return res.status(404).json({ message: "TOR not found" });
+    }
+
+    return res.json({
+      id: doc._id,
+      ocid: doc.ocid,
+      title: doc.title,
+      description: doc.description,
+      agency: doc.agency,
+      category: doc.category,
+      fiscalYear: doc.fiscalYear,
+      budgetAmount: doc.budgetAmount,
+      tenderAmount: doc.tenderAmount,
+      publishedDate: doc.publishedDate,
+      submissionDeadline: doc.submissionDeadline,
+      procurementMethod: doc.procurementMethod,
+      bidderQualifications: doc.bidderQualifications,
+      sourceUrl: doc.sourceUrl,
+      documents: doc.documents ?? [],
+      // When the agency last changed it, falling back to when we last synced it.
+      lastUpdated: doc.sourceUpdatedAt ?? doc.updatedAt,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Failed to load TOR" });
   }
 });
 
