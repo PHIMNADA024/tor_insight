@@ -8,6 +8,11 @@ const router = Router();
 const SORT_VALUES = ["date", "budget", "relevance"] as const;
 type SortValue = (typeof SORT_VALUES)[number];
 
+/** Escapes user input so it's matched literally, not interpreted as a regex. */
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /** Parses a query param into a finite number, or undefined if absent/invalid. */
 function parseNumber(value: unknown): number | undefined {
   if (typeof value !== "string" || value.trim() === "") return undefined;
@@ -62,9 +67,12 @@ router.get("/", searchLimiter, async (req, res) => {
 
     const filter: Record<string, unknown> = { status: "published" };
 
+    // Substring match, not $text: MongoDB's text index splits on whitespace
+    // and Thai has no spaces between words, so $text only matched whole titles.
     const hasKeyword = typeof keyword === "string" && keyword.trim() !== "";
-    if (hasKeyword) {
-      filter.$text = { $search: (keyword as string).trim() };
+    const keywordRegex = hasKeyword ? new RegExp(escapeRegex((keyword as string).trim()), "i") : null;
+    if (keywordRegex) {
+      filter.$or = [{ title: keywordRegex }, { description: keywordRegex }];
     }
 
     if (typeof agency === "string" && agency.trim() !== "") {
@@ -89,30 +97,42 @@ router.get("/", searchLimiter, async (req, res) => {
     const effectiveSort: SortValue =
       (sort as SortValue) ?? (hasKeyword ? "relevance" : "date");
 
-    const sortSpec: Record<string, unknown> =
+    // Relevance = title matches rank above description-only matches, newest first within each.
+    const sortSpec: Record<string, 1 | -1> =
       effectiveSort === "budget"
         ? { budgetAmount: -1 }
-        : effectiveSort === "relevance" && hasKeyword
-          ? { score: { $meta: "textScore" } }
+        : effectiveSort === "relevance" && keywordRegex
+          ? { titleMatch: -1, publishedDate: -1 }
           : { publishedDate: -1 };
 
-    const projection: Record<string, unknown> = {
-      title: 1,
-      agency: 1,
-      category: 1,
-      budgetAmount: 1,
-      fiscalYear: 1,
-      publishedDate: 1,
-    };
-    if (hasKeyword) {
-      projection.score = { $meta: "textScore" };
+    const pipeline: mongoose.PipelineStage[] = [{ $match: filter }];
+    if (keywordRegex && effectiveSort === "relevance") {
+      pipeline.push({
+        $addFields: {
+          titleMatch: {
+            $regexMatch: { input: "$title", regex: keywordRegex.source, options: "i" },
+          },
+        },
+      });
     }
+    pipeline.push(
+      { $sort: sortSpec },
+      { $skip: (page - 1) * limit },
+      { $limit: limit },
+      {
+        $project: {
+          title: 1,
+          agency: 1,
+          category: 1,
+          budgetAmount: 1,
+          fiscalYear: 1,
+          publishedDate: 1,
+        },
+      },
+    );
 
     const [docs, total] = await Promise.all([
-      Tor.find(filter, projection)
-        .sort(sortSpec as never)
-        .skip((page - 1) * limit)
-        .limit(limit),
+      Tor.aggregate(pipeline),
       Tor.countDocuments(filter),
     ]);
 
@@ -138,6 +158,33 @@ router.get("/", searchLimiter, async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Search failed" });
+  }
+});
+
+/**
+ * Filter options for the search page, taken from what's actually published.
+ * GET /api/tors/filters
+ *
+ * Declared before /:id so "filters" isn't parsed as a TOR id.
+ */
+router.get("/filters", searchLimiter, async (_req, res) => {
+  try {
+    const published = { status: "published" } as const;
+
+    const [agencies, categories, fiscalYears] = await Promise.all([
+      Tor.distinct("agency", published),
+      Tor.distinct("category", published),
+      Tor.distinct("fiscalYear", published),
+    ]);
+
+    return res.json({
+      agencies: (agencies as string[]).filter(Boolean).sort((a, b) => a.localeCompare(b, "th")),
+      categories: (categories as string[]).filter((c) => c && c !== "uncategorized").sort(),
+      fiscalYears: (fiscalYears as number[]).filter((y) => typeof y === "number").sort((a, b) => b - a),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Failed to load filter options" });
   }
 });
 
