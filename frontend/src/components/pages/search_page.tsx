@@ -5,7 +5,13 @@ import Link from "next/link";
 import { Clock } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Button } from "@/components/ui/button";
-import { FilterPanel, emptyFilters, type SearchFilters } from "@/components/search/FilterPanel";
+import {
+    FilterPanel,
+    emptyFilters,
+    CATEGORY_LABELS,
+    toBuddhistYear,
+    type SearchFilters,
+} from "@/components/search/FilterPanel";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -28,9 +34,10 @@ type Pagination = {
     totalPages: number;
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
-    software: "ซอฟต์แวร์",
-    it_equipment: "ครุภัณฑ์คอมพิวเตอร์/ไอที",
+type FilterOptions = {
+    agencies: string[];
+    categories: string[];
+    fiscalYears: number[];
 };
 
 function formatDate(iso?: string) {
@@ -73,6 +80,26 @@ export default function SearchPage() {
     const [pagination, setPagination] = useState<Pagination | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    const [filterOptions, setFilterOptions] = useState<FilterOptions>({
+        agencies: [],
+        categories: [],
+        fiscalYears: [],
+    });
+
+    useEffect(() => {
+        const controller = new AbortController();
+
+        fetch(`${API_URL}/api/tors/filters`, { signal: controller.signal })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data: FilterOptions | null) => {
+                if (data) setFilterOptions(data);
+            })
+
+            .catch(() => {});
+
+        return () => controller.abort();
+    }, []);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -133,6 +160,9 @@ export default function SearchPage() {
                     onChange={setFilters}
                     onApply={handleApply}
                     onReset={handleReset}
+                    agencyOptions={filterOptions.agencies}
+                    categoryOptions={filterOptions.categories}
+                    fiscalYearOptions={filterOptions.fiscalYears}
                 />
 
                 <section>
@@ -197,7 +227,7 @@ export default function SearchPage() {
                                                     ประกาศ: {formatDate(t.publishedDate)}
                                                 </span>
                                                 {t.fiscalYear && (
-                                                    <span>• ปีงบประมาณ: {t.fiscalYear}</span>
+                                                    <span>• ปีงบประมาณ: {toBuddhistYear(t.fiscalYear)}</span>
                                                 )}
                                             </p>
 
