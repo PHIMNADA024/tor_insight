@@ -127,7 +127,7 @@ export function HomePage() {
                                 {tors.map((t) => (
                                     <tr key={t.id} className="border-t border-border">
                                         <td className="px-4 py-3">
-                                            <Link href="/tor" className="hover:text-primary">
+                                            <Link href={`/tor/${t.id}`} className="hover:text-primary">
                                                 {t.title}
                                             </Link>
                                         </td>
