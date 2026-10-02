@@ -2,35 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ArrowLeft,
-  Building2,
-  ExternalLink,
-  FileText,
-  FileSpreadsheet,
-  FileType2,
-  Archive,
-  File as FileIcon,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowLeft, Building2, ExternalLink, Sparkles } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Button } from "@/components/ui/button";
+import { categoryLabel } from "@/lib/categories";
+import { BiddingBadge } from "@/components/BiddingBadge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 const NO_DATA = "ไม่มีข้อมูล";
 
-const CATEGORY_LABELS: Record<string, string> = {
-  software: "ซอฟต์แวร์และบริการ",
-  it_equipment: "อุปกรณ์ไอที",
-  uncategorized: "ไม่ระบุหมวดหมู่",
-};
-
-type TorDocument = {
-  title?: string;
-  url?: string;
-  format?: string;
-};
 
 type TorItem = {
   description?: string;
@@ -59,10 +40,11 @@ type TorDetail = {
   budgetAmount?: number;
   tenderAmount?: number;
   publishedDate?: string;
+  tenderStartDate?: string;
+  submissionDeadline?: string;
   procurementMethod?: string;
   bidderQualifications?: string;
   sourceUrl?: string;
-  documents: TorDocument[];
   items: TorItem[];
   suppliers: string[];
   contracts: TorContract[];
@@ -70,6 +52,7 @@ type TorDetail = {
 };
 
 type LoadState = "loading" | "ready" | "notfound" | "error";
+
 
 function formatDate(value?: string): string {
   if (!value) return NO_DATA;
@@ -83,17 +66,7 @@ function formatMoney(value?: number): string {
   return value == null ? NO_DATA : value.toLocaleString("th-TH");
 }
 
-function docIcon(format?: string): LucideIcon {
-  const f = (format ?? "").toLowerCase();
-  if (f.includes("pdf")) return FileText;
-  if (f.includes("doc") || f.includes("word")) return FileType2;
-  if (f.includes("xls") || f.includes("sheet") || f.includes("csv")) return FileSpreadsheet;
-  if (f.includes("zip") || f.includes("rar")) return Archive;
-  return FileIcon;
-}
-
-// Files are served by the agency in their original format, so we open
-// the source URL directly instead of proxying through our backend.
+// Opens the agency's own page directly rather than proxying through our backend.
 function openExternal(url?: string) {
   if (url) window.open(url, "_blank", "noopener,noreferrer");
 }
@@ -136,6 +109,78 @@ function ContractCard({ contract }: { contract: TorContract }) {
         </div>
       )}
     </div>
+  );
+}
+
+type SummaryState =
+  | { status: "loading" }
+  | { status: "ready"; text: string }
+  | { status: "unavailable" }
+  | { status: "error" };
+
+/**
+ * Loaded separately from the TOR itself: the first view of a TOR waits a few
+ * seconds on the model, and the rest of the page shouldn't wait with it.
+ */
+function TorSummarySection({ id }: { id: string }) {
+  const [summary, setSummary] = useState<SummaryState>({ status: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch(`${API_URL}/api/tors/${id}/summary`)
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.status === 503) return setSummary({ status: "unavailable" });
+        if (!res.ok) return setSummary({ status: "error" });
+        const data: { text: string } = await res.json();
+        if (!cancelled) setSummary({ status: "ready", text: data.text });
+      })
+      .catch(() => {
+        if (!cancelled) setSummary({ status: "error" });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  // The model writes a lead paragraph followed by "- " bullet lines.
+  const lines = summary.status === "ready" ? summary.text.split("\n").map((l) => l.trim()).filter(Boolean) : [];
+  const paragraphs = lines.filter((l) => !l.startsWith("- "));
+  const bullets = lines.filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
+
+  return (
+    <section className={card}>
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+        <Sparkles className="size-4 text-primary" />
+        สรุป TOR
+      </h2>
+
+      {summary.status === "loading" && (
+        <p className="animate-pulse text-sm text-muted-foreground">กำลังสรุปข้อมูล...</p>
+      )}
+      {summary.status === "unavailable" && (
+        <p className="text-sm text-muted-foreground">ยังไม่เปิดใช้งานการสรุป TOR</p>
+      )}
+      {summary.status === "error" && (
+        <p className="text-sm text-muted-foreground">สรุปข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง</p>
+      )}
+      {summary.status === "ready" && (
+        <div className="space-y-3 text-sm leading-relaxed">
+          {paragraphs.map((p, i) => (
+            <p key={i}>{p}</p>
+          ))}
+          {bullets.length > 0 && (
+            <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+              {bullets.map((b, i) => (
+                <li key={i}>{b}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -200,19 +245,21 @@ export function TorPage({ id }: { id: string }) {
     );
   }
 
-  const categoryLabel = CATEGORY_LABELS[tor.category] ?? tor.category;
+  const torCategoryLabel = categoryLabel(tor.category);
 
-  // Submission deadline is left out: no source we collect provides it.
-  // The two dates are when we first collected the record and when the
-  // source last regenerated it. BMA doesn't publish an announcement date,
-  // so the labels say what the dates actually are.
+  // "เก็บข้อมูลครั้งแรก" and "อัปเดตจากแหล่งที่มา" are when we first collected
+  // the record and when the source last regenerated it. BMA doesn't publish an
+  // announcement date, so the labels say what the dates actually are. The
+  // bidding window only shows when the source has one (few BMA records do).
   const meta: [string, string][] = [
+    ...(tor.tenderStartDate ? [["วันเปิดรับข้อเสนอ", formatDate(tor.tenderStartDate)] as [string, string]] : []),
+    ...(tor.submissionDeadline ? [["วันปิดรับข้อเสนอ", formatDate(tor.submissionDeadline)] as [string, string]] : []),
     ["เก็บข้อมูลครั้งแรก", formatDate(tor.publishedDate)],
     ["อัปเดตจากแหล่งที่มา", formatDate(tor.lastUpdated)],
     ["วิธีจัดซื้อจัดจ้าง", tor.procurementMethod || NO_DATA],
     ["งบประมาณ (บาท)", formatMoney(tor.budgetAmount)],
     ["วงเงินจัดซื้อจัดจ้าง (บาท)", formatMoney(tor.tenderAmount)],
-    ["หมวดหมู่", categoryLabel],
+    ["หมวดหมู่", torCategoryLabel],
     ["เลขอ้างอิง (OCID)", tor.ocid],
   ];
 
@@ -231,7 +278,6 @@ export function TorPage({ id }: { id: string }) {
         ? ["วงเงินจัดซื้อจัดจ้าง (บาท)", tor.tenderAmount]
         : ["งบประมาณ (บาท)", tor.budgetAmount];
 
-  const documents = (tor.documents ?? []).filter((d) => d.url);
   const items = tor.items ?? [];
   const suppliers = tor.suppliers ?? [];
   const hasProjectDetails =
@@ -250,10 +296,11 @@ export function TorPage({ id }: { id: string }) {
           <div>
             <h1 className="text-2xl font-semibold leading-snug tracking-tight">{tor.title}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <BiddingBadge tor={{ ...tor, hasContract: tor.contracts.length > 0 }} />
               <span className="flex items-center gap-1">
                 <Building2 className="size-3.5" /> {tor.agency}
               </span>
-              <span className="rounded-md bg-accent px-2 py-1 text-accent-foreground">{categoryLabel}</span>
+              <span className="rounded-md bg-accent px-2 py-1 text-accent-foreground">{torCategoryLabel}</span>
               {tor.fiscalYear != null && (
                 <span className="rounded-md bg-muted px-2 py-1">
                   {/* Stored as a Gregorian year (2026); Thai users expect Buddhist Era (2569). */}
@@ -347,40 +394,7 @@ export function TorPage({ id }: { id: string }) {
             )}
           </section>
 
-          <section className={card}>
-            <h2 className="mb-3 text-sm font-semibold">เอกสารแนบ</h2>
-            {documents.length > 0 ? (
-              <ul className="space-y-2">
-                {documents.map((d, i) => {
-                  const Icon = docIcon(d.format);
-                  return (
-                    <li
-                      key={`${d.url}-${i}`}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5"
-                    >
-                      <span className="flex min-w-0 items-center gap-3">
-                        <Icon className="size-4 shrink-0 text-primary" />
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium">{d.title || "เอกสารแนบ"}</span>
-                          {d.format && (
-                            <span className="block text-xs uppercase text-muted-foreground">{d.format}</span>
-                          )}
-                        </span>
-                      </span>
-                      <Button variant="outline" size="sm" onClick={() => openExternal(d.url)}>
-                        ดาวน์โหลด
-                      </Button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <div className="flex items-center gap-3 rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
-                <FileIcon className="size-4 shrink-0" />
-                ไม่มีเอกสารแนบสำหรับ TOR นี้
-              </div>
-            )}
-          </section>
+          <TorSummarySection id={id} />
 
           <div className="space-y-6">
             <section className={card}>

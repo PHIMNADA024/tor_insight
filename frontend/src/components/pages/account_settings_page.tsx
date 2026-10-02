@@ -9,18 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { handleAuthError } from "@/hooks/use-auth";
+import { CATEGORY_OPTIONS, categoryLabel } from "@/lib/categories";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-const CATEGORY_OPTIONS = [
-    "software",
-    "it_equipment",
-];
-
-const CATEGORY_LABELS: Record<string, string> = {
-    software: "ซอฟต์แวร์",
-    it_equipment: "ครุภัณฑ์คอมพิวเตอร์",
-};
 
 function getToken() {
     if (typeof window === "undefined") return null;
@@ -298,7 +290,7 @@ export default function AccountSettingsPage() {
                                             checked={criteria.categories.includes(category)}
                                             onCheckedChange={() => toggleCategory(category)}
                                         />
-                                        {CATEGORY_LABELS[category] ?? category}
+                                        {categoryLabel(category)}
                                     </label>
                                 ))}
                             </div>
