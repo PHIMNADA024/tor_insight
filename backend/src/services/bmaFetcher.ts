@@ -8,7 +8,8 @@
 
 import fs from "fs";
 import { Tor } from "../models/index.js";
-import { SyncLog } from "../models/index.js";
+import { NonRetryableError, withRetry } from "./http.js";
+import { withSyncLog, type SyncCounts, type SyncTrigger } from "./syncRun.js";
 
 /** UNSPSC prefixes we treat as IT-related. */
 const IT_PREFIXES = ["43", "8111", "8116"];
@@ -100,32 +101,6 @@ const BMA_BASE_URL =
 export function currentFiscalYear(date = new Date()): number {
   const buddhistYear = date.getFullYear() + BUDDHIST_ERA_OFFSET;
   return date.getMonth() >= 9 ? buddhistYear + 1 : buddhistYear;
-}
-
-/** Thrown for failures that retrying won't fix, like a missing file. */
-class NonRetryableError extends Error {}
-
-/**
- * Runs an async function, retrying on failure with increasing delays
- * (2s, 4s, ...). Gives up immediately on NonRetryableError.
- */
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  attempts = 3,
-  baseDelayMs = 2000,
-): Promise<T> {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      if (error instanceof NonRetryableError || attempt >= attempts) {
-        throw error;
-      }
-      const delay = baseDelayMs * 2 ** (attempt - 1);
-      console.warn(`Attempt ${attempt} failed, retrying in ${delay / 1000}s`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
 }
 
 /**
@@ -244,6 +219,7 @@ function mapRelease(release: any) {
     category: budgetCategory(budgetId),
     itCategory,
     budgetId,
+    egpProjectNumber: release.tender?.id,
     unspscCodes: codes,
     budgetAmount,
     budgetCurrency: budget?.currency ?? "THB",
@@ -261,13 +237,6 @@ function mapRelease(release: any) {
   };
 }
 
-type SyncCounts = {
-  inserted: number;
-  updated: number;
-  skipped: number;
-  read: number;
-};
-
 /** Parses an OCDS file and upserts every usable release. Returns counts. */
 async function processFile(filePath: string): Promise<SyncCounts> {
   const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -277,12 +246,26 @@ async function processFile(filePath: string): Promise<SyncCounts> {
   let updated = 0;
   let skipped = 0;
 
+  // Procurements already brought in from e-GP. BMA must not add a second
+  // record for them (FR-08); whichever source had it first keeps it.
+  const egpNumbers = new Set(
+    (await Tor.distinct("egpProjectNumber", { sourceId: "egp" })) as string[],
+  );
+
   for (const release of releases) {
     const doc = mapRelease(release);
 
     if (!doc) {
       skipped++;
       continue;
+    }
+
+    if (doc.egpProjectNumber && egpNumbers.has(doc.egpProjectNumber)) {
+      // Only skip new inserts; a BMA record that already exists keeps updating.
+      if (!(await Tor.exists({ ocid: doc.ocid }))) {
+        skipped++;
+        continue;
+      }
     }
 
     // BMA rewrites release.date every night when it regenerates the file,
@@ -326,79 +309,14 @@ async function processFile(filePath: string): Promise<SyncCounts> {
   return { inserted, updated, skipped, read: releases.length };
 }
 
-/** A run still in_progress after this long is assumed to have died. */
-const STALE_AFTER_MS = 60 * 60 * 1000;
-
-/**
- * Marks runs stuck in "in_progress" as failed. A process killed mid-sync
- * never reaches the code that updates its log, so it would otherwise
- * look like it's still running forever.
- */
-async function markStaleRuns(): Promise<void> {
-  const cutoff = new Date(Date.now() - STALE_AFTER_MS);
-
-  await SyncLog.updateMany(
-    { status: "in_progress", startedAt: { $lt: cutoff } },
-    {
-      status: "failed",
-      finishedAt: new Date(),
-      errorMessage: "Interrupted before finishing",
-    },
-  );
-}
-
-/**
- * Wraps a sync in a SyncLog entry (FR-23). The entry is created first,
- * so any failure inside `work` — download or processing — gets recorded.
- */
-async function withSyncLog(
-  trigger: "scheduled" | "manual",
-  work: () => Promise<SyncCounts>,
-): Promise<SyncCounts> {
-  await markStaleRuns();
-  const log = await SyncLog.create({ sourceId: "bma", trigger });
-
-  try {
-    const counts = await work();
-    await SyncLog.updateOne(
-      { _id: log._id },
-      {
-        status: "success",
-        finishedAt: new Date(),
-        recordsRead: counts.read,
-        recordsInserted: counts.inserted,
-        recordsUpdated: counts.updated,
-        recordsSkipped: counts.skipped,
-      },
-    );
-    return counts;
-  } catch (error) {
-    await SyncLog.updateOne(
-      { _id: log._id },
-      {
-        status: "failed",
-        finishedAt: new Date(),
-        errorMessage: error instanceof Error ? error.message : String(error),
-      },
-    );
-    throw error;
-  }
-}
-
 /** Syncs a local OCDS file (FR-07, FR-08). */
-export function runBmaSync(
-  filePath: string,
-  trigger: "scheduled" | "manual" = "scheduled",
-) {
-  return withSyncLog(trigger, () => processFile(filePath));
+export function runBmaSync(filePath: string, trigger: SyncTrigger = "scheduled") {
+  return withSyncLog("bma", trigger, () => processFile(filePath));
 }
 
 /** Downloads a fiscal year from BMA and syncs it, logging any failure. */
-export function syncFiscalYear(
-  fiscalYear: number,
-  trigger: "scheduled" | "manual" = "scheduled",
-) {
-  return withSyncLog(trigger, async () => {
+export function syncFiscalYear(fiscalYear: number, trigger: SyncTrigger = "scheduled") {
+  return withSyncLog("bma", trigger, async () => {
     const filePath = await downloadBmaFile(fiscalYear);
     return processFile(filePath);
   });
