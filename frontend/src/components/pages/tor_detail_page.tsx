@@ -32,6 +32,22 @@ type TorDocument = {
   format?: string;
 };
 
+type TorItem = {
+  description?: string;
+  unspscCode?: string;
+  unspscDescription?: string;
+  quantity?: number;
+  unit?: string;
+};
+
+type TorContract = {
+  title?: string;
+  startDate?: string;
+  endDate?: string;
+  amount?: number;
+  amountSpent?: number;
+};
+
 type TorDetail = {
   id: string;
   ocid: string;
@@ -43,11 +59,13 @@ type TorDetail = {
   budgetAmount?: number;
   tenderAmount?: number;
   publishedDate?: string;
-  submissionDeadline?: string;
   procurementMethod?: string;
   bidderQualifications?: string;
   sourceUrl?: string;
   documents: TorDocument[];
+  items: TorItem[];
+  suppliers: string[];
+  contracts: TorContract[];
   lastUpdated?: string;
 };
 
@@ -81,6 +99,45 @@ function openExternal(url?: string) {
 }
 
 const card = "rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-card)]";
+const subheading = "text-xs font-medium uppercase tracking-wide text-muted-foreground";
+
+/** One signed contract: title, period, value and how much has been paid. */
+function ContractCard({ contract }: { contract: TorContract }) {
+  const { amount, amountSpent } = contract;
+  const percent =
+    amount && amountSpent != null ? Math.min(100, Math.round((amountSpent / amount) * 100)) : null;
+
+  return (
+    <div className="rounded-lg border border-border p-3">
+      {contract.title && <p className="text-sm leading-relaxed">{contract.title}</p>}
+      <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
+        <div>
+          <dt className="text-muted-foreground">ระยะเวลาสัญญา</dt>
+          <dd className="mt-0.5 font-medium">
+            {formatDate(contract.startDate)} – {formatDate(contract.endDate)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">มูลค่าสัญญา (บาท)</dt>
+          <dd className="mt-0.5 font-medium">{formatMoney(amount)}</dd>
+        </div>
+      </dl>
+      {percent != null && (
+        <div className="mt-3">
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">เบิกจ่ายแล้ว</span>
+            <span className="font-medium">
+              {formatMoney(amountSpent)} บาท ({percent}%)
+            </span>
+          </div>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary" style={{ width: `${percent}%` }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function TorPage({ id }: { id: string }) {
   const router = useRouter();
@@ -145,17 +202,40 @@ export function TorPage({ id }: { id: string }) {
 
   const categoryLabel = CATEGORY_LABELS[tor.category] ?? tor.category;
 
+  // Submission deadline is left out: no source we collect provides it.
+  // The two dates are when we first collected the record and when the
+  // source last regenerated it. BMA doesn't publish an announcement date,
+  // so the labels say what the dates actually are.
   const meta: [string, string][] = [
-    ["วันที่ประกาศ", formatDate(tor.publishedDate)],
-    ["ปรับปรุงล่าสุด", formatDate(tor.lastUpdated)],
-    ["วันปิดรับข้อเสนอ", formatDate(tor.submissionDeadline)],
+    ["เก็บข้อมูลครั้งแรก", formatDate(tor.publishedDate)],
+    ["อัปเดตจากแหล่งที่มา", formatDate(tor.lastUpdated)],
     ["วิธีจัดซื้อจัดจ้าง", tor.procurementMethod || NO_DATA],
+    ["งบประมาณ (บาท)", formatMoney(tor.budgetAmount)],
     ["วงเงินจัดซื้อจัดจ้าง (บาท)", formatMoney(tor.tenderAmount)],
     ["หมวดหมู่", categoryLabel],
     ["เลขอ้างอิง (OCID)", tor.ocid],
   ];
 
-  const documents = tor.documents.filter((d) => d.url);
+  // Headline figure: what was actually signed if there is a contract,
+  // otherwise the tender value, otherwise the budget. The budget line is
+  // often shared by several procurements, and the tender value can even
+  // exceed it, so neither is a reliable "price" on its own.
+  const contracts = tor.contracts ?? [];
+  const contractTotal = contracts.some((c) => c.amount != null)
+    ? contracts.reduce((sum, c) => sum + (c.amount ?? 0), 0)
+    : undefined;
+  const [headlineLabel, headlineAmount]: [string, number | undefined] =
+    contractTotal != null
+      ? ["มูลค่าสัญญา (บาท)", contractTotal]
+      : tor.tenderAmount != null
+        ? ["วงเงินจัดซื้อจัดจ้าง (บาท)", tor.tenderAmount]
+        : ["งบประมาณ (บาท)", tor.budgetAmount];
+
+  const documents = (tor.documents ?? []).filter((d) => d.url);
+  const items = tor.items ?? [];
+  const suppliers = tor.suppliers ?? [];
+  const hasProjectDetails =
+    items.length > 0 || suppliers.length > 0 || contracts.length > 0 || !!tor.bidderQualifications;
 
   return (
     <div className="min-h-screen bg-background">
@@ -181,10 +261,11 @@ export function TorPage({ id }: { id: string }) {
                 </span>
               )}
             </div>
+            {tor.description && <p className="mt-2 text-sm text-muted-foreground">{tor.description}</p>}
           </div>
           <div className={`h-fit ${card} p-4`}>
-            <p className="text-xs text-muted-foreground">งบประมาณ (บาท)</p>
-            <p className="mt-1 text-2xl font-semibold text-success">{formatMoney(tor.budgetAmount)}</p>
+            <p className="text-xs text-muted-foreground">{headlineLabel}</p>
+            <p className="mt-1 text-2xl font-semibold text-success">{formatMoney(headlineAmount)}</p>
           </div>
         </div>
 
@@ -206,22 +287,69 @@ export function TorPage({ id }: { id: string }) {
 
           <section className={card}>
             <h2 className="text-sm font-semibold">รายละเอียดโครงการ</h2>
-            <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
-              {tor.description || NO_DATA}
-            </p>
+
+            {!hasProjectDetails && <p className="mt-2 text-sm text-muted-foreground">{NO_DATA}</p>}
+
+            {items.length > 0 && (
+              <div className="mt-4">
+                <h3 className={subheading}>รายการที่จัดซื้อจัดจ้าง</h3>
+                <ul className="mt-2 space-y-2">
+                  {items.map((item, i) => (
+                    <li key={`${item.unspscCode}-${i}`} className="text-sm">
+                      <span className="font-medium">{item.description || NO_DATA}</span>
+                      {item.quantity != null && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · {item.quantity.toLocaleString("th-TH")} {item.unit}
+                        </span>
+                      )}
+                      {item.unspscCode && (
+                        <span className="block text-xs text-muted-foreground">
+                          UNSPSC {item.unspscCode}
+                          {item.unspscDescription && ` · ${item.unspscDescription}`}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {suppliers.length > 0 && (
+              <div className="mt-4">
+                <h3 className={subheading}>ผู้ได้รับการคัดเลือก</h3>
+                <ul className="mt-2 space-y-1 text-sm font-medium">
+                  {suppliers.map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {contracts.length > 0 && (
+              <div className="mt-4">
+                <h3 className={subheading}>สัญญา</h3>
+                <div className="mt-2 space-y-3">
+                  {contracts.map((c, i) => (
+                    <ContractCard key={i} contract={c} />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {tor.bidderQualifications && (
-              <>
-                <h3 className="mt-4 text-sm font-semibold">คุณสมบัติผู้ยื่นข้อเสนอ</h3>
+              <div className="mt-4">
+                <h3 className={subheading}>คุณสมบัติผู้ยื่นข้อเสนอ</h3>
                 <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
                   {tor.bidderQualifications}
                 </p>
-              </>
+              </div>
             )}
           </section>
 
-          {documents.length > 0 && (
-            <section className={card}>
-              <h2 className="mb-3 text-sm font-semibold">เอกสารแนบ</h2>
+          <section className={card}>
+            <h2 className="mb-3 text-sm font-semibold">เอกสารแนบ</h2>
+            {documents.length > 0 ? (
               <ul className="space-y-2">
                 {documents.map((d, i) => {
                   const Icon = docIcon(d.format);
@@ -246,8 +374,13 @@ export function TorPage({ id }: { id: string }) {
                   );
                 })}
               </ul>
-            </section>
-          )}
+            ) : (
+              <div className="flex items-center gap-3 rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+                <FileIcon className="size-4 shrink-0" />
+                ไม่มีเอกสารแนบสำหรับ TOR นี้
+              </div>
+            )}
+          </section>
 
           <div className="space-y-6">
             <section className={card}>

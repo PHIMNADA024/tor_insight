@@ -31,6 +31,16 @@ function isRelevant(codes: string[]): boolean {
   return classify(codes) !== "uncategorized";
 }
 
+/** Contract titles BMA uses for hiring a single person ("individual service hire"). */
+const INDIVIDUAL_HIRE_PHRASE = "จ้างเหมาบริการเป็นรายบุคคล";
+
+/** True if the release is a staff hire rather than buying goods or services. */
+function isIndividualHire(release: any): boolean {
+  return (release.contracts ?? []).some((c: any) =>
+    (c.title ?? "").includes(INDIVIDUAL_HIRE_PHRASE),
+  );
+}
+
 /** Thai years use the Buddhist calendar, 543 years ahead: 2569 = 2026. */
 const BUDDHIST_ERA_OFFSET = 543;
 
@@ -147,6 +157,10 @@ function mapRelease(release: any) {
     .filter(Boolean);
 
   if (!isRelevant(codes)) return null;
+
+  // Hiring an individual sometimes carries an IT code (e.g. "HR software"
+  // for a vocational trainer), but it isn't IT procurement.
+  if (isIndividualHire(release)) return null;
 
   // BMA sometimes uses the non-standard "value" instead of "amount".
   const budget = release.planning?.budget?.amount;
