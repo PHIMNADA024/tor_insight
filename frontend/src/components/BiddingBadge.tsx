@@ -1,12 +1,23 @@
 type BiddingInput = {
   tenderStartDate?: string;
   submissionDeadline?: string;
-  hasContract: boolean;
+  /** A signed contract, or an announced winner/cancellation. */
+  hasWinner: boolean;
 };
 
 export type BiddingStatus = { label: string; note?: string; tone: "open" | "upcoming" | "closed" };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * BMA deadlines are date-only (stored at UTC midnight), so bids are accepted
+ * through that whole day. e-GP deadlines carry the real closing time (e.g. 12:00).
+ */
+function closingTime(deadline: string) {
+  const d = new Date(deadline);
+  const dateOnly = d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0;
+  return dateOnly ? new Date(d.getTime() + DAY_MS) : d;
+}
 
 /**
  * Whether bids are being accepted, from the bidding window when the source
@@ -15,15 +26,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 export function biddingStatus(tor: BiddingInput, now = new Date()): BiddingStatus | null {
   const opensAt = tor.tenderStartDate ? new Date(tor.tenderStartDate) : undefined;
-  // Deadlines are date-only (midnight), so bids are accepted through that whole day.
-  const closesAt = tor.submissionDeadline
-    ? new Date(new Date(tor.submissionDeadline).getTime() + DAY_MS)
-    : undefined;
+  const closesAt = tor.submissionDeadline ? closingTime(tor.submissionDeadline) : undefined;
 
   if (closesAt && now >= closesAt) return { label: "ปิดรับสมัคร", tone: "closed" };
+  // A winner or cancellation closes bidding even before the deadline.
+  if (tor.hasWinner) return { label: "ปิดรับสมัคร", note: "ได้ผู้ชนะแล้ว", tone: "closed" };
   if (opensAt && now < opensAt) return { label: "ยังไม่เปิดรับสมัคร", tone: "upcoming" };
   if (closesAt) return { label: "เปิดรับสมัคร", tone: "open" };
-  if (tor.hasContract) return { label: "ปิดรับสมัคร", note: "ได้ผู้ชนะแล้ว", tone: "closed" };
   return null;
 }
 
