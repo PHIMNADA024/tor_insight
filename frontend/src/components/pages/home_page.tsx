@@ -41,8 +41,13 @@ export function HomePage() {
 
     useEffect(() => {
         fetch("http://localhost:4000/api/tors?limit=4")
-            .then((res) => res.json())
-            .then((data) => setTors(data.results))
+            .then(async (res) => {
+                // An error response (e.g. 429 from the rate limiter) has no
+                // `results`; keep the list empty instead of crashing the page.
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                setTors(data.results ?? []);
+            })
             .catch((err) => console.error("Failed to load TORs:", err));
     }, []);
 
