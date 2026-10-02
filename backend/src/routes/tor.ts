@@ -224,6 +224,9 @@ router.get("/:id", async (req, res) => {
       bidderQualifications: doc.bidderQualifications,
       sourceUrl: doc.sourceUrl,
       documents: doc.documents ?? [],
+      items: doc.items ?? [],
+      suppliers: doc.suppliers ?? [],
+      contracts: doc.contracts ?? [],
       // When the agency last changed it, falling back to when we last synced it.
       lastUpdated: doc.sourceUpdatedAt ?? doc.updatedAt,
     });

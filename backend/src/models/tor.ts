@@ -34,20 +34,54 @@ const torSchema = new Schema(
 
     publishedDate: { type: Date },
 
-    // Required by FR-02 but not present in BMA's data.
-    // Kept so other sources can fill them later.
+    // submissionDeadline and bidderQualifications aren't in BMA's data.
+    // procurementMethod comes from tender.procurementMethodDetails.
     submissionDeadline: { type: Date },
     procurementMethod: { type: String, trim: true },
     bidderQualifications: { type: String, trim: true },
 
     // Link back to the official source for verification (FR-05).
     sourceUrl: { type: String, trim: true },
+
+    // The arrays below use _id: false. Without it Mongoose gives every
+    // entry a new _id on each sync, so unchanged records would be
+    // counted as updated every run.
+
     // Attachments (FR-03). Rare in BMA's dataset.
     documents: [
       {
+        _id: false,
         title: String,
         url: String,
         format: String,
+      },
+    ],
+
+    // What is being procured (tender.items in OCDS).
+    items: [
+      {
+        _id: false,
+        description: String,
+        unspscCode: String,
+        unspscDescription: String,
+        quantity: Number,
+        unit: String,
+      },
+    ],
+
+    // Winning supplier names only. For individual contractors BMA's
+    // supplier id is a Thai national ID number, so we never store it.
+    suppliers: [{ type: String }],
+
+    // Signed contracts: value, period and how much has been paid so far.
+    contracts: [
+      {
+        _id: false,
+        title: String,
+        startDate: Date,
+        endDate: Date,
+        amount: Number,
+        amountSpent: Number,
       },
     ],
 

@@ -211,7 +211,7 @@ export default function SearchPage() {
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>
                                             <Link
-                                                href="/tor"
+                                                href={`/tor/${t.id}`}
                                                 className="font-medium text-primary hover:underline"
                                             >
                                                 {t.title}
@@ -247,7 +247,7 @@ export default function SearchPage() {
                                                 size="sm"
                                                 className="mt-8"
                                             >
-                                                <Link href="/tor">ดูรายละเอียด</Link>
+                                                <Link href={`/tor/${t.id}`}>ดูรายละเอียด</Link>
                                             </Button>
                                         </div>
                                     </div>
