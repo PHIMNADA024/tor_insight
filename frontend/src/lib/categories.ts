@@ -4,6 +4,8 @@
  * order shown in pickers.
  */
 export const CATEGORY_LABELS: Record<string, string> = {
+  // e-GP invitations to bid (backend/src/services/egpFetcher.ts), not a budget category.
+  tender_invitation: "ประกาศเชิญชวน",
   materials: "ค่าวัสดุ",
   equipment: "ค่าครุภัณฑ์",
   services: "ค่าใช้สอย",
