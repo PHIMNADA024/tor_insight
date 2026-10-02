@@ -1,7 +1,7 @@
 /**
  * BMA data collection service.
- * Reads an OCDS release file, maps each release to a TOR record,
- * categorises it using the UNSPSC codes BMA provides, and upserts on
+ * Reads an OCDS release file, keeps IT procurement (by UNSPSC code),
+ * categorises each record by budget code, and upserts on
  * `ocid` so reruns update rather than duplicate. Each run writes one
  * SyncLog entry with counts and status.
  */
@@ -15,20 +15,50 @@ const IT_PREFIXES = ["43", "8111", "8116"];
 /** Narrower set: software and IT services specifically. */
 const SOFTWARE_PREFIXES = ["43231", "8111", "8116"];
 
-/** Picks a category label from a record's UNSPSC codes. */
-function classify(codes: string[]): string {
+/** Tags IT procurement from UNSPSC codes. Undefined for everything else. */
+function classifyIt(codes: string[]): "software" | "it_equipment" | undefined {
   if (codes.some((c) => SOFTWARE_PREFIXES.some((p) => c.startsWith(p)))) {
     return "software";
   }
   if (codes.some((c) => IT_PREFIXES.some((p) => c.startsWith(p)))) {
     return "it_equipment";
   }
-  return "uncategorized";
+  return undefined;
 }
 
-/** True if any of the record's UNSPSC codes is IT-related. */
-function isRelevant(codes: string[]): boolean {
-  return classify(codes) !== "uncategorized";
+/**
+ * Expense category from the Thai government budget code. The last 9 digits
+ * of planning.budget.id are [budget type 2][group 2][item 2][running 3],
+ * e.g. ...030601001 = operating budget / materials / computer materials.
+ * Names are inferred from the items under each code; the file has no labels.
+ */
+const BUDGET_GROUP_CATEGORIES: Record<string, string> = {
+  "0101": "personnel",
+  "0301": "compensation",
+  "0302": "services",
+  "0304": "materials",
+  "0305": "materials",
+  "0306": "materials",
+  "0501": "equipment",
+  "0502": "equipment",
+  "0503": "construction",
+};
+
+/** Budget types where every group falls in one category. */
+const BUDGET_TYPE_CATEGORIES: Record<string, string> = {
+  "01": "personnel",
+  "04": "utilities",
+  "06": "subsidies",
+  "07": "other_expenses",
+};
+
+function budgetCategory(budgetId: string): string {
+  const code = budgetId.slice(-9);
+  return (
+    BUDGET_GROUP_CATEGORIES[code.slice(0, 4)] ??
+    BUDGET_TYPE_CATEGORIES[code.slice(0, 2)] ??
+    "uncategorized"
+  );
 }
 
 /** Contract titles BMA uses for hiring a single person ("individual service hire"). */
@@ -156,7 +186,10 @@ function mapRelease(release: any) {
     .map((i: any) => i.classification?.id)
     .filter(Boolean);
 
-  if (!isRelevant(codes)) return null;
+  // IT procurement only. Releases without tender items have no UNSPSC
+  // codes, so they can't be identified as IT and are skipped.
+  const itCategory = classifyIt(codes);
+  if (!itCategory) return null;
 
   // Hiring an individual sometimes carries an IT code (e.g. "HR software"
   // for a vocational trainer), but it isn't IT procurement.
@@ -208,12 +241,16 @@ function mapRelease(release: any) {
     description: release.planning?.budget?.description,
     agency,
     agencyId: release.buyer?.id,
-    category: classify(codes),
+    category: budgetCategory(budgetId),
+    itCategory,
+    budgetId,
     unspscCodes: codes,
     budgetAmount,
     budgetCurrency: budget?.currency ?? "THB",
     tenderAmount: release.tender?.value?.amount,
     procurementMethod: release.tender?.procurementMethodDetails,
+    tenderStartDate: parseBmaDate(release.tender?.tenderPeriod?.startDate),
+    submissionDeadline: parseBmaDate(release.tender?.tenderPeriod?.endDate),
     items: tenderItems,
     suppliers,
     contracts,
@@ -258,12 +295,16 @@ async function processFile(filePath: string): Promise<SyncCounts> {
     // Automatic timestamps are turned off here. Mongoose would otherwise
     // add updatedAt to every call, so every record would count as
     // changed on every run. We set updatedAt only when data changed.
+    //
+    // New records are published straight away: mapRelease above is the
+    // automated validation (required fields, IT-only, no staff hires).
+    // Status is only set on insert, so an admin's later archive sticks.
     const now = new Date();
     const result = await Tor.updateOne(
       { ocid: doc.ocid },
       {
         $set: rest,
-        $setOnInsert: { status: "draft", publishedDate, createdAt: now, updatedAt: now },
+        $setOnInsert: { status: "published", publishedDate, createdAt: now, updatedAt: now },
       },
       { upsert: true, timestamps: false },
     );
