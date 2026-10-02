@@ -4,7 +4,7 @@
  * categorises it using the UNSPSC codes BMA provides, and upserts on
  * `ocid` so reruns update rather than duplicate. Each run writes one
  * SyncLog entry with counts and status.
- */ 
+ */
 
 import fs from "fs";
 import { Tor } from "../models/index.js";
@@ -28,14 +28,26 @@ function classify(codes: string[]): string {
 
 /** True if any of the record's UNSPSC codes is IT-related. */
 function isRelevant(codes: string[]): boolean {
-  return codes.some((c) =>
-    IT_PREFIXES.some((p) => c.startsWith(p)),
-  );
+  return classify(codes) !== "uncategorized";
 }
 
-/** Thai fiscal years use the Buddhist calendar: 2569 = 2026. */
+/** Thai years use the Buddhist calendar, 543 years ahead: 2569 = 2026. */
+const BUDDHIST_ERA_OFFSET = 543;
+
 function toGregorianYear(buddhistYear: number): number {
-  return buddhistYear - 543;
+  return buddhistYear - BUDDHIST_ERA_OFFSET;
+}
+
+/**
+ * BMA writes contract dates with Buddhist years, e.g. "2568-01-10".
+ * Converts them to a real Date.
+ */
+function parseBmaDate(value?: string): Date | undefined {
+  if (!value) return undefined;
+  const year = Number(value.slice(0, 4));
+  const fixed = year > 2400 ? `${toGregorianYear(year)}${value.slice(4)}` : value;
+  const date = new Date(fixed);
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 const BMA_BASE_URL =
@@ -46,7 +58,7 @@ const BMA_BASE_URL =
  * Fiscal years start 1 October, so October 2026 is FY2570.
  */
 export function currentFiscalYear(date = new Date()): number {
-  const buddhistYear = date.getFullYear() + 543;
+  const buddhistYear = date.getFullYear() + BUDDHIST_ERA_OFFSET;
   return date.getMonth() >= 9 ? buddhistYear + 1 : buddhistYear;
 }
 
@@ -76,7 +88,7 @@ async function withRetry<T>(
   }
 }
 
-/*
+/**
  * Downloads one fiscal year's OCDS file and saves it to disk.
  * Retries network and server errors; fails immediately on client
  * errors like 403, which BMA returns for files not yet published.
@@ -90,10 +102,10 @@ export async function downloadBmaFile(
   const body = await withRetry(async () => {
     const res = await fetch(url);
 
-      if (res.headers.get("cf-mitigated") === "challenge") {
-        throw new NonRetryableError(
+    if (res.headers.get("cf-mitigated") === "challenge") {
+      throw new NonRetryableError(
         `Blocked by Cloudflare bot protection (HTTP ${res.status})`,
-        );
+      );
     }
 
     // 4xx means the request itself is wrong (BMA returns 403 for files
@@ -134,7 +146,7 @@ function mapRelease(release: any) {
     .map((i: any) => i.classification?.id)
     .filter(Boolean);
 
-    if (!isRelevant(codes)) return null;
+  if (!isRelevant(codes)) return null;
 
   // BMA sometimes uses the non-standard "value" instead of "amount".
   const budget = release.planning?.budget?.amount;
@@ -145,6 +157,35 @@ function mapRelease(release: any) {
   const fiscalYear = budgetId.length >= 2
     ? toGregorianYear(2500 + Number(budgetId.slice(0, 2)))
     : undefined;
+
+  const tenderItems = items.map((i: any) => ({
+    description: i.description,
+    unspscCode: i.classification?.id,
+    unspscDescription: i.classification?.description,
+    quantity: i.quantity,
+    unit: i.unit?.name,
+  }));
+
+  // Names only. For individual contractors the supplier id is a
+  // Thai national ID number, so it must never be stored.
+  const suppliers: string[] = [
+    ...new Set<string>(
+      (release.awards ?? [])
+        .flatMap((a: any) => a.suppliers ?? [])
+        .map((s: any) => s.name)
+        .filter(Boolean),
+    ),
+  ];
+
+  const contracts = (release.contracts ?? []).map((c: any) => ({
+    title: c.title,
+    startDate: parseBmaDate(c.period?.startDate),
+    endDate: parseBmaDate(c.period?.endDate),
+    amount: c.value?.amount,
+    amountSpent: c.implementation?.financialProgress?.totalSpend?.amount,
+  }));
+
+  const releaseDate = release.date ? new Date(release.date) : undefined;
 
   return {
     ocid,
@@ -158,10 +199,14 @@ function mapRelease(release: any) {
     budgetAmount,
     budgetCurrency: budget?.currency ?? "THB",
     tenderAmount: release.tender?.value?.amount,
+    procurementMethod: release.tender?.procurementMethodDetails,
+    items: tenderItems,
+    suppliers,
+    contracts,
     fiscalYear,
-    publishedDate: release.date ? new Date(release.date) : undefined,
+    publishedDate: releaseDate,
     sourceUrl: "https://opencontract.bangkok.go.th/",
-    sourceUpdatedAt: release.date ? new Date(release.date) : undefined,
+    sourceUpdatedAt: releaseDate,
   };
 }
 
@@ -196,18 +241,31 @@ async function processFile(filePath: string): Promise<SyncCounts> {
 
     // Upsert on ocid: existing records are updated, new ones created.
     // This is what prevents duplicates across repeated runs.
+    // Automatic timestamps are turned off here. Mongoose would otherwise
+    // add updatedAt to every call, so every record would count as
+    // changed on every run. We set updatedAt only when data changed.
+    const now = new Date();
     const result = await Tor.updateOne(
       { ocid: doc.ocid },
       {
         $set: rest,
-        $setOnInsert: { status: "draft", publishedDate },
+        $setOnInsert: { status: "draft", publishedDate, createdAt: now, updatedAt: now },
       },
-      { upsert: true },
+      { upsert: true, timestamps: false },
     );
 
-    if (result.upsertedCount > 0) inserted++;
-    else if (result.modifiedCount > 0) updated++;
-    else skipped++;
+    if (result.upsertedCount > 0) {
+      inserted++;
+    } else if (result.modifiedCount > 0) {
+      updated++;
+      await Tor.updateOne(
+        { ocid: doc.ocid },
+        { $set: { updatedAt: now } },
+        { timestamps: false },
+      );
+    } else {
+      skipped++;
+    }
   }
 
   return { inserted, updated, skipped, read: releases.length };
