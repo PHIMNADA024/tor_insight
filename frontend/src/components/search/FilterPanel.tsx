@@ -3,6 +3,7 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { categoryLabel, sortCategories } from "@/lib/categories";
 
 /**
  * Filter values as plain strings (including the numeric ones) so controlled
@@ -25,12 +26,6 @@ export const emptyFilters: SearchFilters = {
   fiscalYear: "",
   budgetMin: "",
   budgetMax: "",
-};
-
-/** Display labels for the Tor model's `category` values (backend/src/models/tor.ts). */
-export const CATEGORY_LABELS: Record<string, string> = {
-  software: "ซอฟต์แวร์",
-  it_equipment: "ครุภัณฑ์คอมพิวเตอร์/ไอที",
 };
 
 /** Fiscal years are stored in Gregorian; BMA staff refer to them in Buddhist Era. */
@@ -128,7 +123,7 @@ export function FilterPanel({
           value={value.category}
           onChange={(v) => setField("category", v)}
           allLabel="ทุกหมวดหมู่"
-          options={categoryOptions.map((c) => ({ value: c, label: CATEGORY_LABELS[c] ?? c }))}
+          options={sortCategories(categoryOptions).map((c) => ({ value: c, label: categoryLabel(c) }))}
         />
 
         <SelectField
