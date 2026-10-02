@@ -12,6 +12,26 @@ const torSchema = new Schema(
     ocid: { type: String, required: true, unique: true, trim: true },
     sourceId: { type: String, required: true, default: "bma" },
 
+    // e-GP project number. BMA's tender.id is the same number, so this is
+    // how the two sources recognise the same procurement (FR-08).
+    egpProjectNumber: { type: String, trim: true },
+    // e-GP's internal id, needed to re-check a project's announcements.
+    egpProjectId: { type: String, trim: true },
+    // AI summary of the e-GP TOR document, shown as the project details
+    // (BMA records use their items/contracts instead).
+    detailSummary: { type: String },
+    // The e-GP PDFs the deadline and detailSummary were read from; they are
+    // re-read only when e-GP publishes a different file.
+    invitationPdfUrl: { type: String },
+    torPdfUrl: { type: String },
+    // The e-GP winner announcement that suppliers and awardAmount were read from.
+    awardPdfUrl: { type: String },
+    // e-GP has no contract records; these stand in for BMA's contracts.
+    // awardAmount is the winning price (summed over winners); null means the
+    // PDF was read but the price was missing or implausible.
+    awardAmount: { type: Number },
+    contractStatus: { type: String, trim: true },
+
     // BMA has no tender title, so this comes from
     // planning.budget.project in the source data.
     title: { type: String, required: true, trim: true },
@@ -60,8 +80,12 @@ const torSchema = new Schema(
         title: String,
         url: String,
         format: String,
+        publishedDate: Date,
       },
     ],
+    // When a winner or a cancellation was announced (e-GP). Bidding is
+    // closed from then on, even if the deadline hasn't passed.
+    awardAnnouncedAt: { type: Date },
 
     // What is being procured (tender.items in OCDS).
     items: [
@@ -124,6 +148,8 @@ torSchema.index({ agency: 1, fiscalYear: -1 });
 torSchema.index({ category: 1, budgetAmount: -1 });
 // Only published records appear in public search.
 torSchema.index({ status: 1, publishedDate: -1 });
+// Cross-source duplicate check between BMA and e-GP.
+torSchema.index({ egpProjectNumber: 1 });
 
 export type TorDoc = InferSchemaType<typeof torSchema>;
 export const Tor = model("Tor", torSchema);
