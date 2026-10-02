@@ -9,6 +9,7 @@
 import fs from "fs";
 import { Tor } from "../models/index.js";
 import { SyncLog } from "../models/index.js";
+import { notifyMatchingUsers } from "../jobs/notify-matches.js";
 
 /** UNSPSC prefixes we treat as IT-related. */
 const IT_PREFIXES = ["43", "8111", "8116"];
@@ -229,6 +230,7 @@ type SyncCounts = {
   updated: number;
   skipped: number;
   read: number;
+  newTorIds: string[];
 };
 
 /** Parses an OCDS file and upserts every usable release. Returns counts. */
@@ -239,6 +241,7 @@ async function processFile(filePath: string): Promise<SyncCounts> {
   let inserted = 0;
   let updated = 0;
   let skipped = 0;
+  const newTorIds: string[] = [];
 
   for (const release of releases) {
     const doc = mapRelease(release);
@@ -270,6 +273,7 @@ async function processFile(filePath: string): Promise<SyncCounts> {
 
     if (result.upsertedCount > 0) {
       inserted++;
+      if (result.upsertedId) newTorIds.push(result.upsertedId.toString());
     } else if (result.modifiedCount > 0) {
       updated++;
       await Tor.updateOne(
@@ -282,7 +286,7 @@ async function processFile(filePath: string): Promise<SyncCounts> {
     }
   }
 
-  return { inserted, updated, skipped, read: releases.length };
+  return { inserted, updated, skipped, read: releases.length, newTorIds };
 }
 
 /** A run still in_progress after this long is assumed to have died. */
@@ -309,6 +313,8 @@ async function markStaleRuns(): Promise<void> {
 /**
  * Wraps a sync in a SyncLog entry (FR-23). The entry is created first,
  * so any failure inside `work` — download or processing — gets recorded.
+ * After a successful run, notifies users whose saved criteria match any
+ * newly-inserted TORs (notification failures never fail the sync itself).
  */
 async function withSyncLog(
   trigger: "scheduled" | "manual",
@@ -330,6 +336,15 @@ async function withSyncLog(
         recordsSkipped: counts.skipped,
       },
     );
+
+    if (counts.newTorIds.length > 0) {
+      try {
+        await notifyMatchingUsers(counts.newTorIds);
+      } catch (error) {
+        console.error("Failed to send match notifications:", error);
+      }
+    }
+
     return counts;
   } catch (error) {
     await SyncLog.updateOne(
