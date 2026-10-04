@@ -11,11 +11,7 @@ export const metadata: Metadata = {
     },
 };
 
-export default async function Page({
-    searchParams,
-}: {
-    searchParams: Promise<{ q?: string }>;
-}) {
-    const { q } = await searchParams;
-    return <SearchPage initialKeyword={q ?? ""} />;
+export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; category?: string }> }) {
+    const { q, category } = await searchParams;
+    return <SearchPage initialKeyword={q ?? ""} initialCategory={category ?? ""} />;
 }
