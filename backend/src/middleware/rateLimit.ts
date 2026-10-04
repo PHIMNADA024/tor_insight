@@ -31,3 +31,12 @@ export const searchLimiter = rateLimit({
   legacyHeaders: false,
   message: { message: "Too many requests, please slow down" },
 });
+
+// Each uncached summary is a paid model call, so cap how fast one IP can trigger them.
+export const summaryLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests, please slow down" },
+});

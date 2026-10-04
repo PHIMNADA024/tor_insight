@@ -1,7 +1,9 @@
 import { Router } from "express";
 import mongoose from "mongoose";
 import { Tor } from "../models/tor.js";
-import { searchLimiter } from "../middleware/rateLimit.js";
+import { searchLimiter, summaryLimiter } from "../middleware/rateLimit.js";
+import { getTorSummary } from "../services/torSummary.js";
+import { GenAIUnavailableError } from "../services/genai.js";
 
 const router = Router();
 
@@ -127,6 +129,16 @@ router.get("/", searchLimiter, async (req, res) => {
           budgetAmount: 1,
           fiscalYear: 1,
           publishedDate: 1,
+          // For the bidding-status badge; the list doesn't need the contracts themselves.
+          tenderStartDate: 1,
+          submissionDeadline: 1,
+          // A signed contract (BMA) or an announced winner/cancellation (e-GP).
+          hasWinner: {
+            $or: [
+              { $gt: [{ $size: { $ifNull: ["$contracts", []] } }, 0] },
+              { $ne: [{ $ifNull: ["$awardAnnouncedAt", null] }, null] },
+            ],
+          },
         },
       },
     );
@@ -144,6 +156,9 @@ router.get("/", searchLimiter, async (req, res) => {
       budgetAmount: doc.budgetAmount,
       fiscalYear: doc.fiscalYear,
       publishedDate: doc.publishedDate,
+      tenderStartDate: doc.tenderStartDate,
+      submissionDeadline: doc.submissionDeadline,
+      hasWinner: doc.hasWinner,
     }));
 
     return res.json({
@@ -189,6 +204,33 @@ router.get("/filters", searchLimiter, async (_req, res) => {
 });
 
 /**
+ * AI summary of a TOR, generated on first request and then served from the DB.
+ * GET /api/tors/:id/summary
+ */
+router.get("/:id/summary", summaryLimiter, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: "Invalid TOR id" });
+    }
+
+    const summary = await getTorSummary(String(id));
+    if (!summary) {
+      return res.status(404).json({ message: "TOR not found" });
+    }
+
+    return res.json(summary);
+  } catch (error) {
+    if (error instanceof GenAIUnavailableError) {
+      return res.status(503).json({ message: "TOR summary is not available" });
+    }
+    console.error(error);
+    return res.status(500).json({ message: "Failed to summarize TOR" });
+  }
+});
+
+/**
  * Single TOR detail
  * GET /api/tors/:id
  *
@@ -219,13 +261,17 @@ router.get("/:id", async (req, res) => {
       budgetAmount: doc.budgetAmount,
       tenderAmount: doc.tenderAmount,
       publishedDate: doc.publishedDate,
+      tenderStartDate: doc.tenderStartDate,
       submissionDeadline: doc.submissionDeadline,
+      awardAnnouncedAt: doc.awardAnnouncedAt,
       procurementMethod: doc.procurementMethod,
       bidderQualifications: doc.bidderQualifications,
       sourceUrl: doc.sourceUrl,
-      documents: doc.documents ?? [],
+      detailSummary: doc.detailSummary,
       items: doc.items ?? [],
       suppliers: doc.suppliers ?? [],
+      awardAmount: doc.awardAmount ?? undefined,
+      contractStatus: doc.contractStatus,
       contracts: doc.contracts ?? [],
       // When the agency last changed it, falling back to when we last synced it.
       lastUpdated: doc.sourceUpdatedAt ?? doc.updatedAt,

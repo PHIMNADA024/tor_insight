@@ -19,15 +19,10 @@ import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatTHB, categories } from "@/lib/mock-data";
+import { categoryLabel } from "@/lib/categories";
 
 const catIcons = [Globe, Smartphone, Brain, BarChart3, MapPin];
 
-/** Readable labels for the category values stored in the database. */
-const CATEGORY_LABELS: Record<string, string> = {
-    software: "ซอฟต์แวร์",
-    it_equipment: "อุปกรณ์ไอที",
-    uncategorized: "ไม่ระบุ",
-};
 
 /** Shape of a TOR record as returned by GET /api/tors. */
 type TorSummary = {
@@ -46,8 +41,13 @@ export function HomePage() {
 
     useEffect(() => {
         fetch("http://localhost:4000/api/tors?limit=4")
-            .then((res) => res.json())
-            .then((data) => setTors(data.results))
+            .then(async (res) => {
+                // An error response (e.g. 429 from the rate limiter) has no
+                // `results`; keep the list empty instead of crashing the page.
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                setTors(data.results ?? []);
+            })
             .catch((err) => console.error("Failed to load TORs:", err));
     }, []);
 
@@ -140,7 +140,7 @@ export function HomePage() {
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className="rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground">
-                                                {CATEGORY_LABELS[t.category] ?? t.category}
+                                                {categoryLabel(t.category)}
                                             </span>
                                         </td>
                                     </tr>

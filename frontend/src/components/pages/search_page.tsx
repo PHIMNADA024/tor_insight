@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button";
 import {
     FilterPanel,
     emptyFilters,
-    CATEGORY_LABELS,
     toBuddhistYear,
     type SearchFilters,
 } from "@/components/search/FilterPanel";
+import { categoryLabel } from "@/lib/categories";
+import { BiddingBadge } from "@/components/BiddingBadge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -25,6 +26,9 @@ type TorResult = {
     budgetAmount?: number;
     fiscalYear?: number;
     publishedDate?: string;
+    tenderStartDate?: string;
+    submissionDeadline?: string;
+    hasWinner: boolean;
 };
 
 type Pagination = {
@@ -210,6 +214,9 @@ export default function SearchPage() {
                                 >
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>
+                                            <div className="mb-2">
+                                                <BiddingBadge tor={t} size="sm" />
+                                            </div>
                                             <Link
                                                 href={`/tor/${t.id}`}
                                                 className="font-medium text-primary hover:underline"
@@ -232,7 +239,7 @@ export default function SearchPage() {
                                             </p>
 
                                             <span className="mt-3 inline-block rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground">
-                                                {CATEGORY_LABELS[t.category] ?? t.category}
+                                                {categoryLabel(t.category)}
                                             </span>
                                         </div>
 

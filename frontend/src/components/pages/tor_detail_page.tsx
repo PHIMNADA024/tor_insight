@@ -2,35 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ArrowLeft,
-  Building2,
-  ExternalLink,
-  FileText,
-  FileSpreadsheet,
-  FileType2,
-  Archive,
-  File as FileIcon,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowLeft, Building2, ExternalLink, Sparkles } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Button } from "@/components/ui/button";
+import { categoryLabel } from "@/lib/categories";
+import { BiddingBadge } from "@/components/BiddingBadge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 const NO_DATA = "ไม่มีข้อมูล";
 
-const CATEGORY_LABELS: Record<string, string> = {
-  software: "ซอฟต์แวร์และบริการ",
-  it_equipment: "อุปกรณ์ไอที",
-  uncategorized: "ไม่ระบุหมวดหมู่",
-};
-
-type TorDocument = {
-  title?: string;
-  url?: string;
-  format?: string;
-};
 
 type TorItem = {
   description?: string;
@@ -59,17 +40,24 @@ type TorDetail = {
   budgetAmount?: number;
   tenderAmount?: number;
   publishedDate?: string;
+  tenderStartDate?: string;
+  submissionDeadline?: string;
+  awardAnnouncedAt?: string;
+  detailSummary?: string;
   procurementMethod?: string;
   bidderQualifications?: string;
   sourceUrl?: string;
-  documents: TorDocument[];
   items: TorItem[];
   suppliers: string[];
+  // e-GP only: the winning price and contract status stand in for contracts.
+  awardAmount?: number;
+  contractStatus?: string;
   contracts: TorContract[];
   lastUpdated?: string;
 };
 
 type LoadState = "loading" | "ready" | "notfound" | "error";
+
 
 function formatDate(value?: string): string {
   if (!value) return NO_DATA;
@@ -83,17 +71,7 @@ function formatMoney(value?: number): string {
   return value == null ? NO_DATA : value.toLocaleString("th-TH");
 }
 
-function docIcon(format?: string): LucideIcon {
-  const f = (format ?? "").toLowerCase();
-  if (f.includes("pdf")) return FileText;
-  if (f.includes("doc") || f.includes("word")) return FileType2;
-  if (f.includes("xls") || f.includes("sheet") || f.includes("csv")) return FileSpreadsheet;
-  if (f.includes("zip") || f.includes("rar")) return Archive;
-  return FileIcon;
-}
-
-// Files are served by the agency in their original format, so we open
-// the source URL directly instead of proxying through our backend.
+// Opens the agency's own page directly rather than proxying through our backend.
 function openExternal(url?: string) {
   if (url) window.open(url, "_blank", "noopener,noreferrer");
 }
@@ -136,6 +114,101 @@ function ContractCard({ contract }: { contract: TorContract }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Renders AI-written text: a lead paragraph followed by "- " bullet lines. */
+/** Label/value rows, label on the left and value right-aligned. */
+function InfoList({ rows }: { rows: [string, string][] }) {
+  return (
+    <dl className="mt-3 space-y-3 text-sm">
+      {rows.map(([k, v]) => (
+        <div key={k} className="flex justify-between gap-4">
+          <dt className="shrink-0 text-muted-foreground">{k}</dt>
+          <dd className={`break-all text-right font-medium ${v === NO_DATA ? "text-muted-foreground" : ""}`}>{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** "๑๒ เดือน" → "12 เดือน". e-GP documents use Thai digits; the rest of the page doesn't. */
+function arabicDigits(text: string) {
+  return text.replace(/[๐-๙]/g, (d) => String(d.charCodeAt(0) - 0x0e50));
+}
+
+function SummaryText({ text }: { text: string }) {
+  const lines = arabicDigits(text).split("\n").map((l) => l.trim()).filter(Boolean);
+  const paragraphs = lines.filter((l) => !l.startsWith("- "));
+  const bullets = lines.filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
+
+  return (
+    <div className="space-y-3 text-sm leading-relaxed">
+      {paragraphs.map((p, i) => (
+        <p key={i}>{p}</p>
+      ))}
+      {bullets.length > 0 && (
+        <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+          {bullets.map((b, i) => (
+            <li key={i}>{b}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+type SummaryState =
+  | { status: "loading" }
+  | { status: "ready"; text: string }
+  | { status: "unavailable" }
+  | { status: "error" };
+
+/**
+ * Loaded separately from the TOR itself: the first view of a TOR waits a few
+ * seconds on the model, and the rest of the page shouldn't wait with it.
+ */
+function TorSummarySection({ id }: { id: string }) {
+  const [summary, setSummary] = useState<SummaryState>({ status: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch(`${API_URL}/api/tors/${id}/summary`)
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.status === 503) return setSummary({ status: "unavailable" });
+        if (!res.ok) return setSummary({ status: "error" });
+        const data: { text: string } = await res.json();
+        if (!cancelled) setSummary({ status: "ready", text: data.text });
+      })
+      .catch(() => {
+        if (!cancelled) setSummary({ status: "error" });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  return (
+    <section className={card}>
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+        <Sparkles className="size-4 text-primary" />
+        สรุป TOR
+      </h2>
+
+      {summary.status === "loading" && (
+        <p className="animate-pulse text-sm text-muted-foreground">กำลังสรุปข้อมูล...</p>
+      )}
+      {summary.status === "unavailable" && (
+        <p className="text-sm text-muted-foreground">ยังไม่เปิดใช้งานการสรุป TOR</p>
+      )}
+      {summary.status === "error" && (
+        <p className="text-sm text-muted-foreground">สรุปข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง</p>
+      )}
+      {summary.status === "ready" && <SummaryText text={summary.text} />}
+    </section>
   );
 }
 
@@ -200,42 +273,42 @@ export function TorPage({ id }: { id: string }) {
     );
   }
 
-  const categoryLabel = CATEGORY_LABELS[tor.category] ?? tor.category;
+  const torCategoryLabel = categoryLabel(tor.category);
 
-  // Submission deadline is left out: no source we collect provides it.
-  // The two dates are when we first collected the record and when the
-  // source last regenerated it. BMA doesn't publish an announcement date,
-  // so the labels say what the dates actually are.
-  const meta: [string, string][] = [
+  // "เก็บข้อมูลครั้งแรก" and "อัปเดตจากแหล่งที่มา" are when we first collected
+  // the record and when the source last regenerated it. BMA doesn't publish an
+  // announcement date, so the labels say what the dates actually are. The
+  // bidding window only shows when the source has one (few BMA records do).
+  const dates: [string, string][] = [
+    ...(tor.tenderStartDate ? [["วันเปิดรับข้อเสนอ", formatDate(tor.tenderStartDate)] as [string, string]] : []),
+    ...(tor.submissionDeadline ? [["วันปิดรับข้อเสนอ", formatDate(tor.submissionDeadline)] as [string, string]] : []),
     ["เก็บข้อมูลครั้งแรก", formatDate(tor.publishedDate)],
     ["อัปเดตจากแหล่งที่มา", formatDate(tor.lastUpdated)],
+  ];
+
+  const meta: [string, string][] = [
     ["วิธีจัดซื้อจัดจ้าง", tor.procurementMethod || NO_DATA],
     ["งบประมาณ (บาท)", formatMoney(tor.budgetAmount)],
     ["วงเงินจัดซื้อจัดจ้าง (บาท)", formatMoney(tor.tenderAmount)],
-    ["หมวดหมู่", categoryLabel],
+    ["หมวดหมู่", torCategoryLabel],
     ["เลขอ้างอิง (OCID)", tor.ocid],
   ];
 
-  // Headline figure: what was actually signed if there is a contract,
-  // otherwise the tender value, otherwise the budget. The budget line is
-  // often shared by several procurements, and the tender value can even
-  // exceed it, so neither is a reliable "price" on its own.
+  // Headline figure is always the budget. For BMA records this is the whole
+  // budget line, which can be shared by several procurements, so it may be
+  // larger than this TOR's contract; the contract value is listed below.
   const contracts = tor.contracts ?? [];
-  const contractTotal = contracts.some((c) => c.amount != null)
-    ? contracts.reduce((sum, c) => sum + (c.amount ?? 0), 0)
-    : undefined;
-  const [headlineLabel, headlineAmount]: [string, number | undefined] =
-    contractTotal != null
-      ? ["มูลค่าสัญญา (บาท)", contractTotal]
-      : tor.tenderAmount != null
-        ? ["วงเงินจัดซื้อจัดจ้าง (บาท)", tor.tenderAmount]
-        : ["งบประมาณ (บาท)", tor.budgetAmount];
+  const headlineLabel = "งบประมาณ (บาท)";
+  const headlineAmount = tor.budgetAmount;
 
-  const documents = (tor.documents ?? []).filter((d) => d.url);
   const items = tor.items ?? [];
   const suppliers = tor.suppliers ?? [];
   const hasProjectDetails =
-    items.length > 0 || suppliers.length > 0 || contracts.length > 0 || !!tor.bidderQualifications;
+    !!tor.detailSummary ||
+    items.length > 0 ||
+    suppliers.length > 0 ||
+    contracts.length > 0 ||
+    !!tor.bidderQualifications;
 
   return (
     <div className="min-h-screen bg-background">
@@ -250,10 +323,11 @@ export function TorPage({ id }: { id: string }) {
           <div>
             <h1 className="text-2xl font-semibold leading-snug tracking-tight">{tor.title}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <BiddingBadge tor={{ ...tor, hasWinner: tor.contracts.length > 0 || !!tor.awardAnnouncedAt }} />
               <span className="flex items-center gap-1">
                 <Building2 className="size-3.5" /> {tor.agency}
               </span>
-              <span className="rounded-md bg-accent px-2 py-1 text-accent-foreground">{categoryLabel}</span>
+              <span className="rounded-md bg-accent px-2 py-1 text-accent-foreground">{torCategoryLabel}</span>
               {tor.fiscalYear != null && (
                 <span className="rounded-md bg-muted px-2 py-1">
                   {/* Stored as a Gregorian year (2026); Thai users expect Buddhist Era (2569). */}
@@ -270,25 +344,29 @@ export function TorPage({ id }: { id: string }) {
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <section className={card}>
-            <dl className="space-y-3 text-sm">
-              {meta.map(([k, v]) => (
-                <div key={k} className="flex justify-between gap-4">
-                  <dt className="shrink-0 text-muted-foreground">{k}</dt>
-                  <dd
-                    className={`break-all text-right font-medium ${v === NO_DATA ? "text-muted-foreground" : ""}`}
-                  >
-                    {v}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </section>
+          <div className="space-y-6">
+            <section className={card}>
+              <h2 className="text-sm font-semibold">ข้อมูลทั่วไป</h2>
+              <InfoList rows={meta} />
+            </section>
+
+            <section className={card}>
+              <h2 className="text-sm font-semibold">กำหนดการ</h2>
+              <InfoList rows={dates} />
+            </section>
+          </div>
 
           <section className={card}>
             <h2 className="text-sm font-semibold">รายละเอียดโครงการ</h2>
 
             {!hasProjectDetails && <p className="mt-2 text-sm text-muted-foreground">{NO_DATA}</p>}
+
+            {/* e-GP records: a summary of the TOR document stands in for items/contracts. */}
+            {tor.detailSummary && (
+              <div className="mt-3">
+                <SummaryText text={tor.detailSummary} />
+              </div>
+            )}
 
             {items.length > 0 && (
               <div className="mt-4">
@@ -296,7 +374,7 @@ export function TorPage({ id }: { id: string }) {
                 <ul className="mt-2 space-y-2">
                   {items.map((item, i) => (
                     <li key={`${item.unspscCode}-${i}`} className="text-sm">
-                      <span className="font-medium">{item.description || NO_DATA}</span>
+                      <span className="font-medium">{arabicDigits(item.description || NO_DATA)}</span>
                       {item.quantity != null && (
                         <span className="text-muted-foreground">
                           {" "}
@@ -320,9 +398,21 @@ export function TorPage({ id }: { id: string }) {
                 <h3 className={subheading}>ผู้ได้รับการคัดเลือก</h3>
                 <ul className="mt-2 space-y-1 text-sm font-medium">
                   {suppliers.map((name) => (
-                    <li key={name}>{name}</li>
+                    <li key={name}>{arabicDigits(name)}</li>
                   ))}
                 </ul>
+                {(tor.awardAmount != null || tor.contractStatus) && (
+                  <dl className="mt-3 grid grid-cols-2 gap-3 rounded-lg border border-border p-3 text-xs">
+                    <div>
+                      <dt className="text-muted-foreground">ราคาที่ชนะ (บาท)</dt>
+                      <dd className="mt-0.5 font-medium">{formatMoney(tor.awardAmount)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">สถานะสัญญา</dt>
+                      <dd className="mt-0.5 font-medium">{tor.contractStatus || NO_DATA}</dd>
+                    </div>
+                  </dl>
+                )}
               </div>
             )}
 
@@ -347,40 +437,7 @@ export function TorPage({ id }: { id: string }) {
             )}
           </section>
 
-          <section className={card}>
-            <h2 className="mb-3 text-sm font-semibold">เอกสารแนบ</h2>
-            {documents.length > 0 ? (
-              <ul className="space-y-2">
-                {documents.map((d, i) => {
-                  const Icon = docIcon(d.format);
-                  return (
-                    <li
-                      key={`${d.url}-${i}`}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5"
-                    >
-                      <span className="flex min-w-0 items-center gap-3">
-                        <Icon className="size-4 shrink-0 text-primary" />
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium">{d.title || "เอกสารแนบ"}</span>
-                          {d.format && (
-                            <span className="block text-xs uppercase text-muted-foreground">{d.format}</span>
-                          )}
-                        </span>
-                      </span>
-                      <Button variant="outline" size="sm" onClick={() => openExternal(d.url)}>
-                        ดาวน์โหลด
-                      </Button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <div className="flex items-center gap-3 rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
-                <FileIcon className="size-4 shrink-0" />
-                ไม่มีเอกสารแนบสำหรับ TOR นี้
-              </div>
-            )}
-          </section>
+          <TorSummarySection id={id} />
 
           <div className="space-y-6">
             <section className={card}>

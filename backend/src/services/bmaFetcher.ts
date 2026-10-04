@@ -1,35 +1,65 @@
 /**
  * BMA data collection service.
- * Reads an OCDS release file, maps each release to a TOR record,
- * categorises it using the UNSPSC codes BMA provides, and upserts on
+ * Reads an OCDS release file, keeps IT procurement (by UNSPSC code),
+ * categorises each record by budget code, and upserts on
  * `ocid` so reruns update rather than duplicate. Each run writes one
  * SyncLog entry with counts and status.
  */
 
 import fs from "fs";
 import { Tor } from "../models/index.js";
-import { SyncLog } from "../models/index.js";
-import { notifyMatchingUsers } from "../jobs/notify-matches.js";
+import { NonRetryableError, withRetry } from "./http.js";
+import { withSyncLog, type SyncCounts, type SyncTrigger } from "./syncRun.js";
 
 /** UNSPSC prefixes we treat as IT-related. */
 const IT_PREFIXES = ["43", "8111", "8116"];
 /** Narrower set: software and IT services specifically. */
 const SOFTWARE_PREFIXES = ["43231", "8111", "8116"];
 
-/** Picks a category label from a record's UNSPSC codes. */
-function classify(codes: string[]): string {
+/** Tags IT procurement from UNSPSC codes. Undefined for everything else. */
+function classifyIt(codes: string[]): "software" | "it_equipment" | undefined {
   if (codes.some((c) => SOFTWARE_PREFIXES.some((p) => c.startsWith(p)))) {
     return "software";
   }
   if (codes.some((c) => IT_PREFIXES.some((p) => c.startsWith(p)))) {
     return "it_equipment";
   }
-  return "uncategorized";
+  return undefined;
 }
 
-/** True if any of the record's UNSPSC codes is IT-related. */
-function isRelevant(codes: string[]): boolean {
-  return classify(codes) !== "uncategorized";
+/**
+ * Expense category from the Thai government budget code. The last 9 digits
+ * of planning.budget.id are [budget type 2][group 2][item 2][running 3],
+ * e.g. ...030601001 = operating budget / materials / computer materials.
+ * Names are inferred from the items under each code; the file has no labels.
+ */
+const BUDGET_GROUP_CATEGORIES: Record<string, string> = {
+  "0101": "personnel",
+  "0301": "compensation",
+  "0302": "services",
+  "0304": "materials",
+  "0305": "materials",
+  "0306": "materials",
+  "0501": "equipment",
+  "0502": "equipment",
+  "0503": "construction",
+};
+
+/** Budget types where every group falls in one category. */
+const BUDGET_TYPE_CATEGORIES: Record<string, string> = {
+  "01": "personnel",
+  "04": "utilities",
+  "06": "subsidies",
+  "07": "other_expenses",
+};
+
+function budgetCategory(budgetId: string): string {
+  const code = budgetId.slice(-9);
+  return (
+    BUDGET_GROUP_CATEGORIES[code.slice(0, 4)] ??
+    BUDGET_TYPE_CATEGORIES[code.slice(0, 2)] ??
+    "uncategorized"
+  );
 }
 
 /** Contract titles BMA uses for hiring a single person ("individual service hire"). */
@@ -71,32 +101,6 @@ const BMA_BASE_URL =
 export function currentFiscalYear(date = new Date()): number {
   const buddhistYear = date.getFullYear() + BUDDHIST_ERA_OFFSET;
   return date.getMonth() >= 9 ? buddhistYear + 1 : buddhistYear;
-}
-
-/** Thrown for failures that retrying won't fix, like a missing file. */
-class NonRetryableError extends Error {}
-
-/**
- * Runs an async function, retrying on failure with increasing delays
- * (2s, 4s, ...). Gives up immediately on NonRetryableError.
- */
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  attempts = 3,
-  baseDelayMs = 2000,
-): Promise<T> {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      if (error instanceof NonRetryableError || attempt >= attempts) {
-        throw error;
-      }
-      const delay = baseDelayMs * 2 ** (attempt - 1);
-      console.warn(`Attempt ${attempt} failed, retrying in ${delay / 1000}s`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
 }
 
 /**
@@ -157,7 +161,10 @@ function mapRelease(release: any) {
     .map((i: any) => i.classification?.id)
     .filter(Boolean);
 
-  if (!isRelevant(codes)) return null;
+  // IT procurement only. Releases without tender items have no UNSPSC
+  // codes, so they can't be identified as IT and are skipped.
+  const itCategory = classifyIt(codes);
+  if (!itCategory) return null;
 
   // Hiring an individual sometimes carries an IT code (e.g. "HR software"
   // for a vocational trainer), but it isn't IT procurement.
@@ -209,12 +216,17 @@ function mapRelease(release: any) {
     description: release.planning?.budget?.description,
     agency,
     agencyId: release.buyer?.id,
-    category: classify(codes),
+    category: budgetCategory(budgetId),
+    itCategory,
+    budgetId,
+    egpProjectNumber: release.tender?.id,
     unspscCodes: codes,
     budgetAmount,
     budgetCurrency: budget?.currency ?? "THB",
     tenderAmount: release.tender?.value?.amount,
     procurementMethod: release.tender?.procurementMethodDetails,
+    tenderStartDate: parseBmaDate(release.tender?.tenderPeriod?.startDate),
+    submissionDeadline: parseBmaDate(release.tender?.tenderPeriod?.endDate),
     items: tenderItems,
     suppliers,
     contracts,
@@ -224,14 +236,6 @@ function mapRelease(release: any) {
     sourceUpdatedAt: releaseDate,
   };
 }
-
-type SyncCounts = {
-  inserted: number;
-  updated: number;
-  skipped: number;
-  read: number;
-  newTorIds: string[];
-};
 
 /** Parses an OCDS file and upserts every usable release. Returns counts. */
 async function processFile(filePath: string): Promise<SyncCounts> {
@@ -243,12 +247,26 @@ async function processFile(filePath: string): Promise<SyncCounts> {
   let skipped = 0;
   const newTorIds: string[] = [];
 
+  // Procurements already brought in from e-GP. BMA must not add a second
+  // record for them (FR-08); whichever source had it first keeps it.
+  const egpNumbers = new Set(
+    (await Tor.distinct("egpProjectNumber", { sourceId: "egp" })) as string[],
+  );
+
   for (const release of releases) {
     const doc = mapRelease(release);
 
     if (!doc) {
       skipped++;
       continue;
+    }
+
+    if (doc.egpProjectNumber && egpNumbers.has(doc.egpProjectNumber)) {
+      // Only skip new inserts; a BMA record that already exists keeps updating.
+      if (!(await Tor.exists({ ocid: doc.ocid }))) {
+        skipped++;
+        continue;
+      }
     }
 
     // BMA rewrites release.date every night when it regenerates the file,
@@ -261,12 +279,16 @@ async function processFile(filePath: string): Promise<SyncCounts> {
     // Automatic timestamps are turned off here. Mongoose would otherwise
     // add updatedAt to every call, so every record would count as
     // changed on every run. We set updatedAt only when data changed.
+    //
+    // New records are published straight away: mapRelease above is the
+    // automated validation (required fields, IT-only, no staff hires).
+    // Status is only set on insert, so an admin's later archive sticks.
     const now = new Date();
     const result = await Tor.updateOne(
       { ocid: doc.ocid },
       {
         $set: rest,
-        $setOnInsert: { status: "draft", publishedDate, createdAt: now, updatedAt: now },
+        $setOnInsert: { status: "published", publishedDate, createdAt: now, updatedAt: now },
       },
       { upsert: true, timestamps: false },
     );
@@ -289,90 +311,14 @@ async function processFile(filePath: string): Promise<SyncCounts> {
   return { inserted, updated, skipped, read: releases.length, newTorIds };
 }
 
-/** A run still in_progress after this long is assumed to have died. */
-const STALE_AFTER_MS = 60 * 60 * 1000;
-
-/**
- * Marks runs stuck in "in_progress" as failed. A process killed mid-sync
- * never reaches the code that updates its log, so it would otherwise
- * look like it's still running forever.
- */
-async function markStaleRuns(): Promise<void> {
-  const cutoff = new Date(Date.now() - STALE_AFTER_MS);
-
-  await SyncLog.updateMany(
-    { status: "in_progress", startedAt: { $lt: cutoff } },
-    {
-      status: "failed",
-      finishedAt: new Date(),
-      errorMessage: "Interrupted before finishing",
-    },
-  );
-}
-
-/**
- * Wraps a sync in a SyncLog entry (FR-23). The entry is created first,
- * so any failure inside `work` — download or processing — gets recorded.
- * After a successful run, notifies users whose saved criteria match any
- * newly-inserted TORs (notification failures never fail the sync itself).
- */
-async function withSyncLog(
-  trigger: "scheduled" | "manual",
-  work: () => Promise<SyncCounts>,
-): Promise<SyncCounts> {
-  await markStaleRuns();
-  const log = await SyncLog.create({ sourceId: "bma", trigger });
-
-  try {
-    const counts = await work();
-    await SyncLog.updateOne(
-      { _id: log._id },
-      {
-        status: "success",
-        finishedAt: new Date(),
-        recordsRead: counts.read,
-        recordsInserted: counts.inserted,
-        recordsUpdated: counts.updated,
-        recordsSkipped: counts.skipped,
-      },
-    );
-
-    if (counts.newTorIds.length > 0) {
-      try {
-        await notifyMatchingUsers(counts.newTorIds);
-      } catch (error) {
-        console.error("Failed to send match notifications:", error);
-      }
-    }
-
-    return counts;
-  } catch (error) {
-    await SyncLog.updateOne(
-      { _id: log._id },
-      {
-        status: "failed",
-        finishedAt: new Date(),
-        errorMessage: error instanceof Error ? error.message : String(error),
-      },
-    );
-    throw error;
-  }
-}
-
 /** Syncs a local OCDS file (FR-07, FR-08). */
-export function runBmaSync(
-  filePath: string,
-  trigger: "scheduled" | "manual" = "scheduled",
-) {
-  return withSyncLog(trigger, () => processFile(filePath));
+export function runBmaSync(filePath: string, trigger: SyncTrigger = "scheduled") {
+  return withSyncLog("bma", trigger, () => processFile(filePath));
 }
 
 /** Downloads a fiscal year from BMA and syncs it, logging any failure. */
-export function syncFiscalYear(
-  fiscalYear: number,
-  trigger: "scheduled" | "manual" = "scheduled",
-) {
-  return withSyncLog(trigger, async () => {
+export function syncFiscalYear(fiscalYear: number, trigger: SyncTrigger = "scheduled") {
+  return withSyncLog("bma", trigger, async () => {
     const filePath = await downloadBmaFile(fiscalYear);
     return processFile(filePath);
   });
