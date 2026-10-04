@@ -2,7 +2,8 @@ import { Router } from "express";
 import mongoose from "mongoose";
 import { Tor } from "../models/tor.js";
 import { searchLimiter, summaryLimiter } from "../middleware/rateLimit.js";
-import { getTorSummary, SummaryUnavailableError } from "../services/torSummary.js";
+import { getTorSummary } from "../services/torSummary.js";
+import { GenAIUnavailableError } from "../services/genai.js";
 
 const router = Router();
 
@@ -131,7 +132,13 @@ router.get("/", searchLimiter, async (req, res) => {
           // For the bidding-status badge; the list doesn't need the contracts themselves.
           tenderStartDate: 1,
           submissionDeadline: 1,
-          hasContract: { $gt: [{ $size: { $ifNull: ["$contracts", []] } }, 0] },
+          // A signed contract (BMA) or an announced winner/cancellation (e-GP).
+          hasWinner: {
+            $or: [
+              { $gt: [{ $size: { $ifNull: ["$contracts", []] } }, 0] },
+              { $ne: [{ $ifNull: ["$awardAnnouncedAt", null] }, null] },
+            ],
+          },
         },
       },
     );
@@ -151,7 +158,7 @@ router.get("/", searchLimiter, async (req, res) => {
       publishedDate: doc.publishedDate,
       tenderStartDate: doc.tenderStartDate,
       submissionDeadline: doc.submissionDeadline,
-      hasContract: doc.hasContract,
+      hasWinner: doc.hasWinner,
     }));
 
     return res.json({
@@ -215,7 +222,7 @@ router.get("/:id/summary", summaryLimiter, async (req, res) => {
 
     return res.json(summary);
   } catch (error) {
-    if (error instanceof SummaryUnavailableError) {
+    if (error instanceof GenAIUnavailableError) {
       return res.status(503).json({ message: "TOR summary is not available" });
     }
     console.error(error);
@@ -256,12 +263,15 @@ router.get("/:id", async (req, res) => {
       publishedDate: doc.publishedDate,
       tenderStartDate: doc.tenderStartDate,
       submissionDeadline: doc.submissionDeadline,
+      awardAnnouncedAt: doc.awardAnnouncedAt,
       procurementMethod: doc.procurementMethod,
       bidderQualifications: doc.bidderQualifications,
       sourceUrl: doc.sourceUrl,
-      documents: doc.documents ?? [],
+      detailSummary: doc.detailSummary,
       items: doc.items ?? [],
       suppliers: doc.suppliers ?? [],
+      awardAmount: doc.awardAmount ?? undefined,
+      contractStatus: doc.contractStatus,
       contracts: doc.contracts ?? [],
       // When the agency last changed it, falling back to when we last synced it.
       lastUpdated: doc.sourceUpdatedAt ?? doc.updatedAt,

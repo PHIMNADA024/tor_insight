@@ -28,7 +28,7 @@ type TorResult = {
     publishedDate?: string;
     tenderStartDate?: string;
     submissionDeadline?: string;
-    hasContract: boolean;
+    hasWinner: boolean;
 };
 
 type Pagination = {
