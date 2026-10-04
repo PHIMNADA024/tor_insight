@@ -22,6 +22,7 @@ import { formatTHB, categories } from "@/lib/mock-data";
 import { categoryLabel } from "@/lib/categories";
 
 const catIcons = [Globe, Smartphone, Brain, BarChart3, MapPin];
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 
 /** Shape of a TOR record as returned by GET /api/tors. */
@@ -40,7 +41,7 @@ export function HomePage() {
     const [tors, setTors] = useState<TorSummary[]>([]);
 
     useEffect(() => {
-        fetch("http://localhost:4000/api/tors?limit=4")
+        fetch(`${API_URL}/api/tors?limit=4`)
             .then(async (res) => {
                 // An error response (e.g. 429 from the rate limiter) has no
                 // `results`; keep the list empty instead of crashing the page.
@@ -67,8 +68,7 @@ export function HomePage() {
                         <Input
                             name="q"
                             placeholder="ค้นหาด้วยคำสำคัญ ชื่อโครงการ หรือหน่วยงาน..."
-                            className="border-0 shadow-none focus-visible:ring-0"
-                        />
+                            className="border-0 text-foreground shadow-none focus-visible:ring-0"                        />
                         <Button type="submit" size="icon" aria-label="ค้นหา">
                             <Search className="size-4" />
                         </Button>

@@ -74,9 +74,10 @@ function buildQuery(filters: SearchFilters, sort: SortValue, page: number) {
     return params.toString();
 }
 
-export default function SearchPage() {
-    const [filters, setFilters] = useState<SearchFilters>(emptyFilters);
-    const [appliedFilters, setAppliedFilters] = useState<SearchFilters>(emptyFilters);
+   export default function SearchPage({ initialKeyword = "" }: { initialKeyword?: string }) {
+    const initialFilters: SearchFilters = { ...emptyFilters, keyword: initialKeyword };
+    const [filters, setFilters] = useState<SearchFilters>(initialFilters);
+    const [appliedFilters, setAppliedFilters] = useState<SearchFilters>(initialFilters);
     const [sort, setSort] = useState<SortValue>("date");
     const [page, setPage] = useState(1);
 

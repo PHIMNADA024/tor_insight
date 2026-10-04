@@ -11,6 +11,11 @@ export const metadata: Metadata = {
     },
 };
 
-export default function Page() {
-    return <SearchPage />;
+export default async function Page({
+    searchParams,
+}: {
+    searchParams: Promise<{ q?: string }>;
+}) {
+    const { q } = await searchParams;
+    return <SearchPage initialKeyword={q ?? ""} />;
 }
