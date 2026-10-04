@@ -29,6 +29,7 @@ const items = [
     },
     {
         label: "การเก็บรวบรวมข้อมูล",
+        href: "/admin/sync",
         icon: Database,
     },
     {
@@ -96,6 +97,8 @@ const jobs = [
         last: "10 ส.ค. 2569, 02:00 น.",
     },
 ];
+
+
 
 export default function AdminPage() {
     return (
