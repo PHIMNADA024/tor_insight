@@ -19,6 +19,7 @@ import { generalLimiter } from "./middleware/rateLimit.js";
 import { sanitizeBody } from "./middleware/sanitize.js";
 import { notFoundHandler } from "./middleware/notFound.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { startSyncSchedule } from "./jobs/syncSchedule.js";
 
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled Rejection:", reason);
@@ -79,6 +80,8 @@ async function startServer() {
     app.listen(port, () => {
       console.log(`API listening on http://localhost:${port}`);
     });
+
+    startSyncSchedule();
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);
