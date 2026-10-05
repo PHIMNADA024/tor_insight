@@ -460,7 +460,11 @@ export function TorPage({ id }: { id: string }) {
               <p className="mt-2 text-sm text-muted-foreground">
                 พบข้อมูลผิดพลาดหรือไม่เป็นปัจจุบัน? ช่วยเราปรับปรุงด้วยการแจ้งเข้ามาได้เลย
               </p>
-              <Button variant="outline" className="mt-4 w-full">
+              <Button
+                variant="outline"
+                className="mt-4 w-full"
+                onClick={() => router.push(`/my-feedback?torId=${encodeURIComponent(tor.id)}`)}
+              >
                 แจ้งปัญหา
               </Button>
             </section>
