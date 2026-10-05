@@ -245,6 +245,7 @@ async function processFile(filePath: string): Promise<SyncCounts> {
   let inserted = 0;
   let updated = 0;
   let skipped = 0;
+  const newTorIds: string[] = [];
 
   // Procurements already brought in from e-GP. BMA must not add a second
   // record for them (FR-08); whichever source had it first keeps it.
@@ -294,6 +295,7 @@ async function processFile(filePath: string): Promise<SyncCounts> {
 
     if (result.upsertedCount > 0) {
       inserted++;
+      if (result.upsertedId) newTorIds.push(result.upsertedId.toString());
     } else if (result.modifiedCount > 0) {
       updated++;
       await Tor.updateOne(
@@ -306,7 +308,7 @@ async function processFile(filePath: string): Promise<SyncCounts> {
     }
   }
 
-  return { inserted, updated, skipped, read: releases.length };
+  return { inserted, updated, skipped, read: releases.length, newTorIds };
 }
 
 /** Syncs a local OCDS file (FR-07, FR-08). */
