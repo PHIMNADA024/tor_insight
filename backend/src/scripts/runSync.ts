@@ -6,6 +6,7 @@
  *   npx tsx src/scripts/runSync.ts data/x.json  BMA, a local file
  *   npx tsx src/scripts/runSync.ts egp          e-GP, invitations from the last 30 days
  *   npx tsx src/scripts/runSync.ts egp full     e-GP, every IT invitation (~8+ minutes)
+ *   npx tsx src/scripts/runSync.ts gproc        national e-GP, today's IT invitations
  */
 import "dotenv/config";
 import { connectDB, disconnectDB } from "../db.js";
@@ -15,6 +16,7 @@ import {
   syncFiscalYear,
 } from "../services/bmaFetcher.js";
 import { runEgpSync } from "../services/egpFetcher.js";
+import { runGprocurementSync } from "../services/gprocurementFetcher.js";
 
 const arg = process.argv[2];
 
@@ -23,7 +25,9 @@ await connectDB();
 try {
   let result;
 
-  if (arg === "egp") {
+  if (arg === "gproc") {
+    result = await runGprocurementSync("manual");
+  } else if (arg === "egp") {
     result = await runEgpSync(process.argv[3] === "full" ? "full" : "recent", "manual");
   } else if (!arg) {
     result = await syncFiscalYear(currentFiscalYear(), "manual");
