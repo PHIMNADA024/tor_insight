@@ -25,6 +25,7 @@ const items = [
     },
     {
         label: "จัดการ TOR",
+        href: "/admin/tors",
         icon: FileStack,
     },
     {
