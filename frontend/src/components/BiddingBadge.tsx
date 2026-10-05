@@ -3,6 +3,8 @@ type BiddingInput = {
   submissionDeadline?: string;
   /** A signed contract, or an announced winner/cancellation. */
   hasWinner: boolean;
+  /** e-GP: "upcoming" when the draft TOR is out but the invitation isn't yet. */
+  biddingStage?: string;
 };
 
 export type BiddingStatus = { label: string; note?: string; tone: "open" | "upcoming" | "closed" };
@@ -33,6 +35,8 @@ export function biddingStatus(tor: BiddingInput, now = new Date()): BiddingStatu
   if (tor.hasWinner) return { label: "ปิดรับสมัคร", note: "ได้ผู้ชนะแล้ว", tone: "closed" };
   if (opensAt && now < opensAt) return { label: "ยังไม่เปิดรับสมัคร", tone: "upcoming" };
   if (closesAt) return { label: "เปิดรับสมัคร", tone: "open" };
+  // No dates yet: only the draft TOR or reference price is out.
+  if (tor.biddingStage === "upcoming") return { label: "ยังไม่เปิดรับสมัคร", note: "มีร่าง TOR แล้ว", tone: "upcoming" };
   return null;
 }
 
