@@ -49,6 +49,40 @@ export async function sendPasswordResetEmail(email: string, resetLink: string) {
   });
 }
 
+export async function sendTorMatchEmail(
+  email: string,
+  name: string,
+  tors: { title: string; agency: string; budgetAmount?: number; sourceUrl?: string }[],
+) {
+  const itemsHtml = tors
+    .map(
+      (t) => `
+        <li style="margin-bottom: 12px;">
+          <strong>${t.title}</strong><br/>
+          หน่วยงาน: ${t.agency}<br/>
+          ${t.budgetAmount ? `งบประมาณ: ${t.budgetAmount.toLocaleString()} บาท<br/>` : ""}
+          ${t.sourceUrl ? `<a href="${t.sourceUrl}">ดูรายละเอียด</a>` : ""}
+        </li>
+      `,
+    )
+    .join("");
+
+  await transporter.sendMail({
+    from: `"TOR Insight" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: `TOR Insight - พบ TOR ใหม่ที่ตรงกับความสนใจของคุณ (${tors.length} รายการ)`,
+    html: `
+      <div>
+        <h2>TOR Insight</h2>
+        <p>สวัสดีคุณ ${name},</p>
+        <p>เราพบ TOR ใหม่ที่ตรงกับเงื่อนไขที่คุณตั้งไว้ ${tors.length} รายการ:</p>
+        <ul>${itemsHtml}</ul>
+        <p>คุณสามารถปรับเงื่อนไขการแจ้งเตือนได้ที่หน้าตั้งค่าบัญชี</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendFeedbackResolvedEmail(
   email: string,
   name: string,

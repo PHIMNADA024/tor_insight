@@ -13,10 +13,11 @@ const adminActionLogSchema = new Schema(
         "user.role_change",
         "feedback.status_change",
         "feedback.respond",
+        "tor.status_change",
       ],
       required: true,
     },
-    targetType: { type: String, enum: ["User", "Feedback"], required: true },
+    targetType: { type: String, enum: ["User", "Feedback", "Tor"], required: true },
     targetId: { type: Schema.Types.ObjectId, required: true },
     // free-form before/after snapshot, e.g. { from: "active", to: "disabled" }
     metadata: { type: Schema.Types.Mixed, default: {} },

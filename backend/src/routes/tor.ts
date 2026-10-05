@@ -243,6 +243,62 @@ router.get("/filters", searchLimiter, async (_req, res) => {
 });
 
 /**
+ * Numbers for the home page: TOR count and budget per category,
+ * plus overall totals. Same published-only filter as /filters,
+ * so the counts match what search returns.
+ * GET /api/tors/stats
+ */
+router.get("/stats", searchLimiter, async (_req, res) => {
+  try {
+    const published = { status: "published" } as const;
+
+    const [byCategory, totals, agencies] = await Promise.all([
+      Tor.aggregate([
+        { $match: { ...published, category: { $ne: "uncategorized" } } },
+        {
+          $group: {
+            _id: "$category",
+            count: { $sum: 1 },
+            totalBudget: { $sum: "$budgetAmount" },
+          },
+        },
+        { $sort: { count: -1 } },
+      ]),
+      Tor.aggregate([
+        { $match: published },
+        {
+          $group: {
+            _id: null,
+            torCount: { $sum: 1 },
+            totalBudget: { $sum: "$budgetAmount" },
+            // $avg skips TORs without a budget instead of counting them as 0
+            avgBudget: { $avg: "$budgetAmount" },
+          },
+        },
+      ]),
+      Tor.distinct("agency", published),
+    ]);
+
+    const t = totals[0] ?? { torCount: 0, totalBudget: 0, avgBudget: 0 };
+
+    return res.json({
+      torCount: t.torCount,
+      totalBudget: t.totalBudget ?? 0,
+      avgBudget: Math.round(t.avgBudget ?? 0),
+      agencyCount: agencies.length,
+      categories: byCategory.map((c) => ({
+        category: c._id,
+        count: c.count,
+        totalBudget: c.totalBudget,
+      })),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Failed to load stats" });
+  }
+});
+
+/**
  * AI summary of a TOR, generated on first request and then served from the DB.
  * GET /api/tors/:id/summary
  */

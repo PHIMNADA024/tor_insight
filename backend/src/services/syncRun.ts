@@ -2,12 +2,15 @@
  * SyncLog bookkeeping shared by every data source's fetcher (FR-23, UC-09).
  */
 import { SyncLog } from "../models/index.js";
+import { notifyMatchingUsers } from "../jobs/notify-matches.js";
 
 export type SyncCounts = {
   inserted: number;
   updated: number;
   skipped: number;
   read: number;
+  /** Ids of TORs this run inserted, for match notifications. */
+  newTorIds?: string[];
 };
 
 export type SyncTrigger = "scheduled" | "manual";
@@ -36,6 +39,8 @@ async function markStaleRuns(): Promise<void> {
 /**
  * Wraps a sync in a SyncLog entry. The entry is created first,
  * so any failure inside `work` — download or processing — gets recorded.
+ * After a successful run, notifies users whose saved criteria match any
+ * newly-inserted TORs (notification failures never fail the sync itself).
  */
 export async function withSyncLog(
   sourceId: string,
@@ -58,6 +63,15 @@ export async function withSyncLog(
         recordsSkipped: counts.skipped,
       },
     );
+
+    if (counts.newTorIds?.length) {
+      try {
+        await notifyMatchingUsers(counts.newTorIds);
+      } catch (error) {
+        console.error("Failed to send match notifications:", error);
+      }
+    }
+
     return counts;
   } catch (error) {
     await SyncLog.updateOne(

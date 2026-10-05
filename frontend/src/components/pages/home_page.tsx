@@ -5,24 +5,36 @@ import Link from "next/link";
 import {
     Search,
     Globe,
-    Smartphone,
-    Brain,
-    BarChart3,
-    MapPin,
+    Monitor,
+    Package,
+    Wrench,
     FileText,
     Wallet,
     Coins,
     Building2,
+    type LucideIcon,
 } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatTHB, categories } from "@/lib/mock-data";
+import { formatTHB } from "@/lib/mock-data";
 import { categoryLabel } from "@/lib/categories";
 
-const catIcons = [Globe, Smartphone, Brain, BarChart3, MapPin];
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
+/** How many category cards the home page shows (the grid has 5 columns). */
+const TOP_CATEGORIES = 5;
+
+/** Icon per category key. Anything not listed falls back to Globe. */
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+    tender_invitation: FileText,
+    equipment: Monitor,
+    materials: Package,
+    services: Wrench,
+    other_expenses: Coins,
+    construction: Building2,
+};
 
 /** Shape of a TOR record as returned by GET /api/tors. */
 type TorSummary = {
@@ -35,12 +47,28 @@ type TorSummary = {
     publishedDate?: string;
 };
 
+/** Shape of GET /api/tors/stats. */
+type TorStats = {
+    torCount: number;
+    totalBudget: number;
+    avgBudget: number;
+    agencyCount: number;
+    categories: { category: string; count: number; totalBudget: number }[];
+};
+
+/** Formats a whole number with thousand separators, e.g. 1,243,750,000. */
+function formatNumber(value: number): string {
+    return Math.round(value).toLocaleString("en-US");
+}
+
 export function HomePage() {
     // Records from the API. Empty until the fetch resolves.
     const [tors, setTors] = useState<TorSummary[]>([]);
+    // Totals for the category and stat cards. Null until loaded.
+    const [stats, setStats] = useState<TorStats | null>(null);
 
     useEffect(() => {
-        fetch("http://localhost:4000/api/tors?limit=4")
+        fetch(`${API_URL}/api/tors?limit=4`)
             .then(async (res) => {
                 // An error response (e.g. 429 from the rate limiter) has no
                 // `results`; keep the list empty instead of crashing the page.
@@ -49,7 +77,17 @@ export function HomePage() {
                 setTors(data.results ?? []);
             })
             .catch((err) => console.error("Failed to load TORs:", err));
+
+        fetch(`${API_URL}/api/tors/stats`)
+            .then(async (res) => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                setStats(await res.json());
+            })
+            .catch((err) => console.error("Failed to load stats:", err));
     }, []);
+
+    // Shown in the stat cards while loading or if the request failed.
+    const placeholder = "–";
 
     return (
         <div className="min-h-screen bg-background">
@@ -67,7 +105,7 @@ export function HomePage() {
                         <Input
                             name="q"
                             placeholder="ค้นหาด้วยคำสำคัญ ชื่อโครงการ หรือหน่วยงาน..."
-                            className="border-0 shadow-none focus-visible:ring-0"
+                            className="border-0 text-foreground shadow-none focus-visible:ring-0"
                         />
                         <Button type="submit" size="icon" aria-label="ค้นหา">
                             <Search className="size-4" />
@@ -85,19 +123,20 @@ export function HomePage() {
                         </Link>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                        {categories.map((c, i) => {
-                            const Icon = catIcons[i] ?? Globe;
+                        {/* The API already sorts categories by count, largest first. */}
+                        {(stats?.categories ?? []).slice(0, TOP_CATEGORIES).map((c) => {
+                            const Icon = CATEGORY_ICONS[c.category] ?? Globe;
 
                             return (
                                 <Link
-                                    key={c.name}
-                                    href="/search"
+                                    key={c.category}
+                                    href={`/search?category=${encodeURIComponent(c.category)}`}
                                     className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)] transition-transform hover:-translate-y-0.5"
                                 >
                                     <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-accent-foreground">
                                         <Icon className="size-4" />
                                     </span>
-                                    <p className="mt-3 text-sm font-medium">{c.name}</p>
+                                    <p className="mt-3 text-sm font-medium">{categoryLabel(c.category)}</p>
                                     <p className="text-xs text-muted-foreground">{c.count} รายการ</p>
                                 </Link>
                             );
@@ -151,10 +190,32 @@ export function HomePage() {
                 </section>
 
                 <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <StatCard label="จำนวน TOR ทั้งหมด" value="351" delta="+12 รายการสัปดาห์นี้" />
-                    <StatCard label="งบประมาณรวม" value="1,243,750,000" unit="บาท" delta="+8.5% ปีนี้" />
-                    <StatCard label="งบประมาณเฉลี่ย" value="7,892,857" unit="บาท" delta="+4.2% ปีนี้" />
-                    <StatCard label="หน่วยงาน" value="24" delta="หน่วยงานภาครัฐ" tone="neutral" />
+                    <StatCard
+                        label="จำนวน TOR ทั้งหมด"
+                        value={stats ? formatNumber(stats.torCount) : placeholder}
+                        delta="ที่เผยแพร่แล้ว"
+                        tone="neutral"
+                    />
+                    <StatCard
+                        label="งบประมาณรวม"
+                        value={stats ? formatNumber(stats.totalBudget) : placeholder}
+                        unit="บาท"
+                        delta="รวมทุกหมวดหมู่"
+                        tone="neutral"
+                    />
+                    <StatCard
+                        label="งบประมาณเฉลี่ย"
+                        value={stats ? formatNumber(stats.avgBudget) : placeholder}
+                        unit="บาท"
+                        delta="ต่อ TOR"
+                        tone="neutral"
+                    />
+                    <StatCard
+                        label="หน่วยงาน"
+                        value={stats ? formatNumber(stats.agencyCount) : placeholder}
+                        delta="หน่วยงานภาครัฐ"
+                        tone="neutral"
+                    />
                 </section>
 
                 <section className="grid gap-4 sm:grid-cols-3">
@@ -174,7 +235,7 @@ export function HomePage() {
 
             <footer className="border-t border-border py-8 text-center text-xs text-muted-foreground">
                 <Wallet className="mx-auto mb-2 size-4" />
-                TOR Insight · ข้อมูลตัวอย่างสำหรับการสาธิต
+                TOR Insight · ข้อมูลจากกรุงเทพมหานครและระบบ e-GP
             </footer>
         </div>
     );
