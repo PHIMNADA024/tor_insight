@@ -100,14 +100,51 @@ router.get("/", searchLimiter, async (req, res) => {
       (sort as SortValue) ?? (hasKeyword ? "relevance" : "date");
 
     // Relevance = title matches rank above description-only matches, newest first within each.
-    const sortSpec: Record<string, 1 | -1> =
-      effectiveSort === "budget"
+    // Whatever the sort, tenders open for bids come first, then upcoming ones.
+    const sortSpec: Record<string, 1 | -1> = {
+      biddingRank: 1,
+      ...(effectiveSort === "budget"
         ? { budgetAmount: -1 }
         : effectiveSort === "relevance" && keywordRegex
           ? { titleMatch: -1, publishedDate: -1 }
-          : { publishedDate: -1 };
+          : { publishedDate: -1 }),
+    };
 
-    const pipeline: mongoose.PipelineStage[] = [{ $match: filter }];
+    const now = new Date();
+    const pipeline: mongoose.PipelineStage[] = [
+      { $match: filter },
+      {
+        $addFields: {
+          // 0 = open (deadline ahead, no winner), 1 = upcoming (draft TOR only), 2 = the rest.
+          biddingRank: {
+            $switch: {
+              branches: [
+                {
+                  case: {
+                    $and: [
+                      { $gt: ["$submissionDeadline", now] },
+                      { $eq: [{ $ifNull: ["$awardAnnouncedAt", null] }, null] },
+                      { $eq: [{ $size: { $ifNull: ["$contracts", []] } }, 0] },
+                    ],
+                  },
+                  then: 0,
+                },
+                {
+                  case: {
+                    $and: [
+                      { $eq: ["$biddingStage", "upcoming"] },
+                      { $eq: [{ $ifNull: ["$submissionDeadline", null] }, null] },
+                    ],
+                  },
+                  then: 1,
+                },
+              ],
+              default: 2,
+            },
+          },
+        },
+      },
+    ];
     if (keywordRegex && effectiveSort === "relevance") {
       pipeline.push({
         $addFields: {
@@ -132,6 +169,7 @@ router.get("/", searchLimiter, async (req, res) => {
           // For the bidding-status badge; the list doesn't need the contracts themselves.
           tenderStartDate: 1,
           submissionDeadline: 1,
+          biddingStage: 1,
           // A signed contract (BMA) or an announced winner/cancellation (e-GP).
           hasWinner: {
             $or: [
@@ -158,6 +196,7 @@ router.get("/", searchLimiter, async (req, res) => {
       publishedDate: doc.publishedDate,
       tenderStartDate: doc.tenderStartDate,
       submissionDeadline: doc.submissionDeadline,
+      biddingStage: doc.biddingStage,
       hasWinner: doc.hasWinner,
     }));
 
@@ -264,6 +303,7 @@ router.get("/:id", async (req, res) => {
       tenderStartDate: doc.tenderStartDate,
       submissionDeadline: doc.submissionDeadline,
       awardAnnouncedAt: doc.awardAnnouncedAt,
+      biddingStage: doc.biddingStage,
       procurementMethod: doc.procurementMethod,
       bidderQualifications: doc.bidderQualifications,
       sourceUrl: doc.sourceUrl,
