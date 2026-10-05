@@ -29,6 +29,7 @@ type TorResult = {
     tenderStartDate?: string;
     submissionDeadline?: string;
     hasWinner: boolean;
+    biddingStage?: string;
 };
 
 type Pagination = {
@@ -212,8 +213,10 @@ export default function SearchPage() {
                                     key={t.id}
                                     className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)]"
                                 >
-                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                        <div>
+                                    {/* Long titles wrap inside the left column instead of pushing
+                                        the budget and button onto their own line. */}
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0 flex-1 break-words">
                                             <div className="mb-2">
                                                 <BiddingBadge tor={t} size="sm" />
                                             </div>
@@ -243,8 +246,8 @@ export default function SearchPage() {
                                             </span>
                                         </div>
 
-                                        <div className="text-right">
-                                            <p className="font-semibold text-success">
+                                        <div className="shrink-0 text-right">
+                                            <p className="whitespace-nowrap font-semibold text-success">
                                                 {formatTHB(t.budgetAmount)} บาท
                                             </p>
 
