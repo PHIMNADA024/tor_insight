@@ -310,6 +310,8 @@ export default function AdminTorManagementPage() {
                                 onClick={() => {
                                     setError(null);
                                     setIsLoading(true);
+                                    setEditingId(null);
+                                    setEditDraft({});
                                     setActiveTab(tab.value);
                                 }}
                                 className={`cursor-pointer border-b-2 px-3 pb-2 text-sm ${
