@@ -14,7 +14,6 @@ import { readDeadline } from "./deadlineReader.js";
 import { summarizeTorDocument } from "./torDocumentSummary.js";
 import { readWinners } from "./winnerReader.js";
 import { toArabicDigits } from "./thaiDigits.js";
-import { egpSearchUrl } from "./egpLinks.js";
 
 const SITE = "https://egp2.bangkok.go.th";
 const API = `${SITE}/appapi/api`;
@@ -336,7 +335,8 @@ async function processProject(
     awardPdfUrl,
     awardAmount,
     contractStatus: detail.masterContractAvailableName ?? undefined,
-    sourceUrl: egpSearchUrl(project.projectNumber),
+    // Bangkok projects aren't in the national e-GP search, so link Bangkok's own page.
+    sourceUrl: `${SITE}/project-detail/${project.projectId}`,
     sourceUpdatedAt: toDate(announcements.at(-1)?.projectAnnouncementPublishDate ?? null),
   };
 
@@ -514,7 +514,7 @@ async function collectUpcoming(bmaNumbers: Set<string>) {
             fiscalYear: fiscalYearFromNumber(p.projectNumber),
             detailSummary,
             torPdfUrl: torUrl,
-            sourceUrl: egpSearchUrl(p.projectNumber),
+            sourceUrl: `${SITE}/project-detail/${p.projectId}`,
             sourceUpdatedAt: toDate(announcements.at(-1)?.projectAnnouncementPublishDate ?? null),
             status: "published",
             publishedDate: firstSeen,
