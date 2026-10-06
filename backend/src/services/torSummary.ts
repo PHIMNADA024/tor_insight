@@ -4,7 +4,7 @@
  * record, so each TOR costs one model call until its data changes.
  */
 import { Tor } from "../models/index.js";
-import { GEMINI_MODEL as MODEL, getGenAI as getClient } from "./genai.js";
+import { GEMINI_MODEL as MODEL, getGenAI as getClient, MAX_PDF_BYTES } from "./genai.js";
 import { NonRetryableError, withRetry } from "./http.js";
 
 // Dates and years are converted here rather than by the model, which
@@ -24,7 +24,7 @@ function thaiDate(value?: Date | null) {
  * Bumped when the prompt changes, so summaries written by an older prompt
  * are regenerated on their next view.
  */
-const PROMPT_VERSION = 2;
+const PROMPT_VERSION = 3;
 const SUMMARY_MODEL = `${MODEL}#v${PROMPT_VERSION}`;
 
 /** A winning price this far below the reference price is likely bad data, not a discount. */
@@ -87,19 +87,27 @@ function buildFacts(tor: any) {
   };
 }
 
-function buildPrompt(tor: any): string {
+function buildPrompt(tor: any, hasDocument: boolean): string {
   return [
-    "เขียนสรุป TOR การจัดซื้อจัดจ้างของกรุงเทพมหานครด้านล่างเป็นภาษาไทย ให้ผู้ประกอบการที่สนใจงานภาครัฐอ่านแล้วเข้าใจภาพรวมในไม่กี่วินาที",
+    "เขียนสรุป TOR การจัดซื้อจัดจ้างภาครัฐด้านล่างเป็นภาษาไทย ให้ผู้ประกอบการที่กำลังพิจารณาว่าจะยื่นข้อเสนอหรือไม่ เข้าใจงานนี้ได้ครบในการอ่านครั้งเดียว",
+    hasDocument
+      ? "แนบเอกสาร TOR หรือประกาศเชิญชวนตัวจริงมาด้วย ให้ใช้เนื้อหาจากเอกสารเป็นหลัก และใช้ข้อมูล JSON ด้านล่างประกอบ"
+      : "ใช้ข้อมูล JSON ด้านล่าง",
     "หน้าเว็บแสดงชื่อ หน่วยงาน วิธีจัดซื้อ งบประมาณ และวันที่เป็นตารางอยู่แล้ว ห้ามทวนเป็นรายการ field แบบ \"วิธีจัดซื้อจัดจ้าง: ...\"",
     "",
     "รูปแบบ:",
-    "- ประโยคแรก 1-2 ประโยค: งานนี้คือการซื้อหรือจ้างอะไร เพื่ออะไร ขนาดงานแค่ไหน (ใช้เนื้อหาจากเอกสาร TOR หรือรายการที่จัดซื้อ)",
-    "- ตามด้วย 2-4 ข้อ ขึ้นต้นด้วย \"- \" เลือกเฉพาะที่มีข้อมูล:",
+    "- ย่อหน้าแรก 2-3 ประโยค: งานนี้คือการซื้อหรือจ้างอะไร เพื่อแก้ปัญหาหรือใช้งานอะไร ขนาดงานแค่ไหน",
+    "- ตามด้วย 4-8 ข้อ ขึ้นต้นด้วย \"- \" และขึ้นต้นข้อด้วยหัวข้อสั้นๆ ตามด้วย \":\" เลือกเฉพาะเรื่องที่มีข้อมูล เช่น",
+    "  ขอบเขตงาน: สิ่งที่ต้องส่งมอบหรือทำ ส่วนประกอบหลักของระบบหรือของที่ซื้อ",
+    "  คุณสมบัติผู้ยื่น: ข้อกำหนดที่ไม่ใช่ข้อทั่วไป เช่น ผลงานที่ต้องเคยทำ ใบรับรอง มาตรฐาน",
+    "  ระยะเวลา: ช่วงเปิด-ปิดรับข้อเสนอ ระยะเวลาส่งมอบหรือดำเนินงาน หรือระยะเวลาสัญญาและการเบิกจ่าย",
+    "  การรับประกันและบริการ: ระยะรับประกัน SLA การบำรุงรักษา การอบรม",
+    "  การชำระเงินและค่าปรับ: งวดเงิน อัตราค่าปรับ",
     "  ผลการจัดซื้อ: ใครได้ไป ในราคาเท่าไร และ \"เทียบราคากลาง\" ตามที่ให้มา",
-    "  ระยะเวลา: ช่วงเปิด-ปิดรับข้อเสนอ หรือระยะเวลาสัญญาและการเบิกจ่าย",
-    "  ขอบเขตหรือเงื่อนไขที่น่าสนใจจากเอกสาร TOR เช่น ระยะเวลาส่งมอบ การรับประกัน",
     "",
     "กติกา:",
+    "- ไม่ต้องใส่จำนวนชิ้นหรือตัวเลขสเปกที่อ่านจากเอกสารสแกน (ตัวเลขไทยในเอกสารสแกนอ่านผิดได้ง่าย) แต่ระยะเวลาและเปอร์เซ็นต์ใส่ได้",
+    "- ข้ามคุณสมบัติผู้ยื่นแบบทั่วไปที่ทุกประกาศมี เช่น ไม่เป็นผู้ล้มละลาย ไม่ถูกระบุชื่อเป็นผู้ทิ้งงาน",
     "- ราคากลางไม่ใช่งบประมาณ ถ้าไม่มี field งบประมาณ ห้ามเขียนถึงงบประมาณ",
     "- ใช้เฉพาะข้อมูลที่ให้มา ห้ามเดา ห้ามคำนวณตัวเลขเอง (ใช้ \"เทียบราคากลาง\" ตามที่ให้มาเท่านั้น)",
     "- ถ้า field ไหนว่างหรือไม่มี ไม่ต้องเขียนเรื่องนั้นเลย ห้ามเขียนว่า \"ไม่พบข้อมูล\" หรือ \"ไม่ระบุ\"",
@@ -110,6 +118,23 @@ function buildPrompt(tor: any): string {
     "ข้อมูล (JSON):",
     JSON.stringify(buildFacts(tor)),
   ].join("\n");
+}
+
+/**
+ * The TOR or invitation PDF (e-GP sources), so the summary can cover what the
+ * stored fields don't: scope, qualifications, warranty, payment. Optional: on
+ * any failure the summary is written from the fields alone.
+ */
+async function fetchSourceDocument(url: string | undefined | null): Promise<Buffer | undefined> {
+  if (!url) return undefined;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) return undefined;
+    const pdf = Buffer.from(await res.arrayBuffer());
+    return pdf.subarray(0, 4).toString("latin1") === "%PDF" && pdf.length <= MAX_PDF_BYTES ? pdf : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -134,6 +159,12 @@ export async function getTorSummary(id: string) {
   const client = getClient();
   let text: string | undefined;
   try {
+    const pdf = await fetchSourceDocument(tor.torPdfUrl ?? tor.invitationPdfUrl);
+    const prompt = buildPrompt(tor, !!pdf);
+    const contents = pdf
+      ? [{ role: "user", parts: [{ inlineData: { mimeType: "application/pdf", data: pdf.toString("base64") } }, { text: prompt }] }]
+      : prompt;
+
     // Vertex's per-minute quota is shared with the sync jobs, which can use it
     // up (429). A visitor is waiting, so retry only briefly (2s, 4s).
     const response = await withRetry(
@@ -141,8 +172,8 @@ export async function getTorSummary(id: string) {
         try {
           return await client.models.generateContent({
             model: MODEL,
-            contents: buildPrompt(tor),
-            config: { temperature: 0.2, maxOutputTokens: 800 },
+            contents,
+            config: { temperature: 0.2, maxOutputTokens: 1500 },
           });
         } catch (error) {
           if ((error as { status?: number }).status !== 429) throw new NonRetryableError(String(error));

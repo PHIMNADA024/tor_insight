@@ -43,6 +43,7 @@ type TorDetail = {
   tenderStartDate?: string;
   submissionDeadline?: string;
   awardAnnouncedAt?: string;
+  biddingStage?: string;
   detailSummary?: string;
   procurementMethod?: string;
   bidderQualifications?: string;

@@ -22,6 +22,7 @@ import { sanitizeBody } from "./middleware/sanitize.js";
 import { notFoundHandler } from "./middleware/notFound.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { syncFiscalYear, currentFiscalYear } from "./services/bmaFetcher.js";
+import { startGprocurementSyncSchedule } from "./jobs/gprocurementSyncSchedule.js";
 
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled Rejection:", reason);
@@ -38,7 +39,10 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN ?? "http://localhost:3000")
   .split(",")
   .map((origin) => origin.trim());
 
-const SYNC_CRON = process.env.SYNC_CRON ?? "0 2 * * *";
+// BMA Open Contract daily sync. The old names (ENABLE_SYNC_CRON, SYNC_CRON)
+// still work so existing .env files keep their setting.
+const BMA_SYNC_ENABLED = (process.env.BMA_SYNC_ENABLED ?? process.env.ENABLE_SYNC_CRON) === "true";
+const BMA_SYNC_CRON = process.env.BMA_SYNC_CRON ?? process.env.SYNC_CRON ?? "0 2 * * *";
 
 app.use(helmet());
 
@@ -85,6 +89,8 @@ async function startServer() {
     app.listen(port, () => {
       console.log(`API listening on http://localhost:${port}`);
     });
+
+    startGprocurementSyncSchedule();
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);
@@ -93,15 +99,15 @@ async function startServer() {
 
 startServer();
 
-if (process.env.ENABLE_SYNC_CRON === "true") {
-  cron.schedule(SYNC_CRON, async () => {
+if (BMA_SYNC_ENABLED) {
+  cron.schedule(BMA_SYNC_CRON, async () => {
     console.log("Running scheduled BMA sync...");
     try {
       const result = await syncFiscalYear(currentFiscalYear(), "scheduled");
-      console.log("Scheduled sync finished:", result);
+      console.log("Scheduled BMA sync finished:", result);
     } catch (error) {
-      console.error("Scheduled sync failed:", error);
+      console.error("Scheduled BMA sync failed:", error);
     }
   });
-  console.log(`Sync cron enabled: ${SYNC_CRON}`);
+  console.log(`BMA sync cron enabled: ${BMA_SYNC_CRON}`);
 }

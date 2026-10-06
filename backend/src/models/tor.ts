@@ -20,6 +20,9 @@ const torSchema = new Schema(
     // AI summary of the e-GP TOR document, shown as the project details
     // (BMA records use their items/contracts instead).
     detailSummary: { type: String },
+    // e-GP bidding stage: "upcoming" when the draft TOR or reference price is
+    // out but no invitation yet (no dates to go on), "invited" once it is.
+    biddingStage: { type: String, enum: ["upcoming", "invited"] },
     // The e-GP PDFs the deadline and detailSummary were read from; they are
     // re-read only when e-GP publishes a different file.
     invitationPdfUrl: { type: String },
