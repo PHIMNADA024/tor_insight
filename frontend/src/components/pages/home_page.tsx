@@ -178,7 +178,7 @@ export function HomePage() {
                                                 : "-"}
                                         </td>
                                         <td className="px-4 py-3">
-                                            <span className="rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground">
+                                            <span className="whitespace-nowrap rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground">
                                                 {categoryLabel(t.category)}
                                             </span>
                                         </td>
