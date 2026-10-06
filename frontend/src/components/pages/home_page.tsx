@@ -155,11 +155,11 @@ export function HomePage() {
                         <table className="w-full text-sm">
                             <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
                                 <tr>
-                                    <th className="px-4 py-3 font-medium">ชื่อโครงการ</th>
-                                    <th className="px-4 py-3 font-medium">หน่วยงาน</th>
-                                    <th className="px-4 py-3 font-medium">งบประมาณ (บาท)</th>
-                                    <th className="px-4 py-3 font-medium">วันที่ประกาศ</th>
-                                    <th className="px-4 py-3 font-medium">หมวดหมู่</th>
+                                    <th className="whitespace-nowrap px-4 py-3 font-medium">ชื่อโครงการ</th>
+                                    <th className="whitespace-nowrap px-4 py-3 font-medium">หน่วยงาน</th>
+                                    <th className="whitespace-nowrap px-4 py-3 font-medium">งบประมาณ (บาท)</th>
+                                    <th className="whitespace-nowrap px-4 py-3 font-medium">วันที่ประกาศ</th>
+                                    <th className="whitespace-nowrap px-4 py-3 font-medium">หมวดหมู่</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -178,7 +178,7 @@ export function HomePage() {
                                                 : "-"}
                                         </td>
                                         <td className="px-4 py-3">
-                                            <span className="rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground">
+                                            <span className="whitespace-nowrap rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground">
                                                 {categoryLabel(t.category)}
                                             </span>
                                         </td>
