@@ -255,7 +255,12 @@ export function TorPage({ id }: { id: string }) {
   const backButton = (
     <button
       type="button"
-      onClick={() => router.back()}
+      onClick={() => {
+        // Opened in a new tab (e.g. a shared link), there is nothing to go back
+        // to and router.back() does nothing, so go to search instead.
+        if (window.history.length > 1) router.back();
+        else router.push("/search");
+      }}
       className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
     >
       <ArrowLeft className="size-4" />
