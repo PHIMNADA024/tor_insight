@@ -12,7 +12,7 @@ import {
     type SearchFilters,
 } from "@/components/search/FilterPanel";
 import { categoryLabel } from "@/lib/categories";
-import { BiddingBadge } from "@/components/BiddingBadge";
+import { BiddingBadge, timeLeftLabel } from "@/components/BiddingBadge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -45,6 +45,21 @@ type FilterOptions = {
     fiscalYears: number[];
 };
 
+/** Time left to bid, shown next to the open badge; urgent (3 days or less) in orange. */
+function TimeLeft({ tor }: { tor: Parameters<typeof timeLeftLabel>[0] }) {
+    const label = timeLeftLabel(tor);
+    if (!label) return null;
+    const urgent = !label.startsWith("เหลืออีก") || Number(label.match(/\d+/)?.[0]) <= 3;
+    return (
+        <span
+            className={`inline-flex items-center gap-1 text-xs font-medium ${urgent ? "text-warning" : "text-muted-foreground"}`}
+        >
+            <Clock className="size-3" />
+            {label}
+        </span>
+    );
+}
+
 function formatDate(iso?: string) {
     if (!iso) return "-";
     return new Date(iso).toLocaleDateString("th-TH", {
@@ -69,6 +84,7 @@ function buildQuery(filters: SearchFilters, sort: SortValue, page: number) {
     if (filters.fiscalYear.trim()) params.set("fiscalYear", filters.fiscalYear.trim());
     if (filters.budgetMin.trim()) params.set("budgetMin", filters.budgetMin.trim());
     if (filters.budgetMax.trim()) params.set("budgetMax", filters.budgetMax.trim());
+    if (filters.bidding) params.set("bidding", filters.bidding);
     params.set("sort", sort);
     params.set("page", String(page));
 
@@ -225,8 +241,9 @@ function buildQuery(filters: SearchFilters, sort: SortValue, page: number) {
                                         the budget and button onto their own line. */}
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0 flex-1 break-words">
-                                            <div className="mb-2">
+                                            <div className="mb-2 flex flex-wrap items-center gap-2">
                                                 <BiddingBadge tor={t} size="sm" />
+                                                <TimeLeft tor={t} />
                                             </div>
                                             <Link
                                                 href={`/tor/${t.id}`}
