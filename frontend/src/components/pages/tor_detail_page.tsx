@@ -68,6 +68,14 @@ function formatDate(value?: string): string {
   return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
 }
 
+/**
+ * The OCID without its source prefix: "egp-69099318566" → "69099318566",
+ * "ocds-bq4ldt-6904…-001" → "6904…-001". Display only; the stored OCID keeps it.
+ */
+function referenceNumber(ocid: string): string {
+  return ocid.replace(/^(ocds-[a-z0-9]+-|egp-|gproc-|mea-)/i, "");
+}
+
 function formatMoney(value?: number): string {
   return value == null ? NO_DATA : value.toLocaleString("th-TH");
 }
@@ -292,7 +300,7 @@ export function TorPage({ id }: { id: string }) {
     ["งบประมาณ (บาท)", formatMoney(tor.budgetAmount)],
     ["วงเงินจัดซื้อจัดจ้าง (บาท)", formatMoney(tor.tenderAmount)],
     ["หมวดหมู่", torCategoryLabel],
-    ["เลขอ้างอิง (OCID)", tor.ocid],
+    ["เลขอ้างอิง", referenceNumber(tor.ocid)],
   ];
 
   // Headline figure is always the budget. For BMA records this is the whole
