@@ -17,6 +17,8 @@ export type SearchFilters = {
   fiscalYear: string;
   budgetMin: string;
   budgetMax: string;
+  /** "open" | "upcoming" | "closed", or "" for all. */
+  bidding: string;
 };
 
 export const emptyFilters: SearchFilters = {
@@ -26,7 +28,14 @@ export const emptyFilters: SearchFilters = {
   fiscalYear: "",
   budgetMin: "",
   budgetMax: "",
+  bidding: "",
 };
+
+const BIDDING_OPTIONS = [
+  { value: "open", label: "เปิดรับสมัคร" },
+  { value: "upcoming", label: "ร่าง TOR (ยังไม่เปิดรับ)" },
+  { value: "closed", label: "ปิดรับสมัคร" },
+];
 
 /** Fiscal years are stored in Gregorian; BMA staff refer to them in Buddhist Era. */
 export function toBuddhistYear(gregorianYear: number) {
@@ -109,6 +118,14 @@ export function FilterPanel({
             onChange={(e) => setField("keyword", e.target.value)}
           />
         </div>
+
+        <SelectField
+          label="สถานะการรับสมัคร"
+          value={value.bidding}
+          onChange={(v) => setField("bidding", v)}
+          allLabel="ทุกสถานะ"
+          options={BIDDING_OPTIONS}
+        />
 
         <SelectField
           label="หน่วยงาน"
