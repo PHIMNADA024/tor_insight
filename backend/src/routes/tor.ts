@@ -4,10 +4,43 @@ import { Tor } from "../models/tor.js";
 import { searchLimiter, summaryLimiter } from "../middleware/rateLimit.js";
 import { getTorSummary } from "../services/torSummary.js";
 import { GenAIUnavailableError } from "../services/genai.js";
+import { toArabicDigits } from "../services/thaiDigits.js";
 
 const router = Router();
 
 const SORT_VALUES = ["date", "budget", "relevance"] as const;
+
+const BIDDING_VALUES = ["open", "upcoming", "closed"] as const;
+type BiddingValue = (typeof BIDDING_VALUES)[number];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Bidding-status filter, with the same rules as the frontend's BiddingBadge:
+ * a date-only deadline (BMA, stored at UTC midnight) stays open through that
+ * whole day; e-GP deadlines close at their exact time. A winner, cancellation
+ * or signed contract closes bidding regardless of the deadline.
+ */
+function biddingFilter(value: BiddingValue, now: Date): Record<string, unknown> {
+  const closesAt = {
+    $cond: [
+      { $and: [{ $eq: [{ $hour: "$submissionDeadline" }, 0] }, { $eq: [{ $minute: "$submissionDeadline" }, 0] }] },
+      { $add: ["$submissionDeadline", DAY_MS] },
+      "$submissionDeadline",
+    ],
+  };
+  const hasDeadline = { $ne: [{ $ifNull: ["$submissionDeadline", null] }, null] };
+  const decided = {
+    $or: [
+      { $ne: [{ $ifNull: ["$awardAnnouncedAt", null] }, null] },
+      { $gt: [{ $size: { $ifNull: ["$contracts", []] } }, 0] },
+    ],
+  };
+
+  if (value === "upcoming") return { biddingStage: "upcoming", submissionDeadline: { $exists: false } };
+  if (value === "open") return { $expr: { $and: [hasDeadline, { $gt: [closesAt, now] }, { $not: [decided] }] } };
+  return { $expr: { $or: [decided, { $and: [hasDeadline, { $lte: [closesAt, now] }] }] } };
+}
 type SortValue = (typeof SORT_VALUES)[number];
 
 /** Escapes user input so it's matched literally, not interpreted as a regex. */
@@ -28,7 +61,7 @@ function parseNumber(value: unknown): number | undefined {
  */
 router.get("/", searchLimiter, async (req, res) => {
   try {
-    const { keyword, agency, category, sort } = req.query;
+    const { keyword, agency, category, sort, bidding } = req.query;
 
     if (sort !== undefined && !SORT_VALUES.includes(sort as SortValue)) {
       return res.status(400).json({
@@ -72,7 +105,10 @@ router.get("/", searchLimiter, async (req, res) => {
     // Substring match, not $text: MongoDB's text index splits on whitespace
     // and Thai has no spaces between words, so $text only matched whole titles.
     const hasKeyword = typeof keyword === "string" && keyword.trim() !== "";
-    const keywordRegex = hasKeyword ? new RegExp(escapeRegex((keyword as string).trim()), "i") : null;
+    // Stored text uses Arabic digits, so "๑ ระบบ" is searched as "1 ระบบ".
+    const keywordRegex = hasKeyword
+      ? new RegExp(escapeRegex(toArabicDigits((keyword as string).trim())), "i")
+      : null;
     if (keywordRegex) {
       filter.$or = [{ title: keywordRegex }, { description: keywordRegex }];
     }
@@ -89,6 +125,13 @@ router.get("/", searchLimiter, async (req, res) => {
       filter.fiscalYear = fiscalYear;
     }
 
+    if (bidding !== undefined) {
+      if (!BIDDING_VALUES.includes(bidding as BiddingValue)) {
+        return res.status(400).json({ message: `bidding must be one of: ${BIDDING_VALUES.join(", ")}` });
+      }
+      Object.assign(filter, biddingFilter(bidding as BiddingValue, new Date()));
+    }
+
     if (budgetMin !== undefined || budgetMax !== undefined) {
       const budgetAmount: Record<string, number> = {};
       if (budgetMin !== undefined) budgetAmount.$gte = budgetMin;
@@ -100,51 +143,14 @@ router.get("/", searchLimiter, async (req, res) => {
       (sort as SortValue) ?? (hasKeyword ? "relevance" : "date");
 
     // Relevance = title matches rank above description-only matches, newest first within each.
-    // Whatever the sort, tenders open for bids come first, then upcoming ones.
-    const sortSpec: Record<string, 1 | -1> = {
-      biddingRank: 1,
-      ...(effectiveSort === "budget"
+    const sortSpec: Record<string, 1 | -1> =
+      effectiveSort === "budget"
         ? { budgetAmount: -1 }
         : effectiveSort === "relevance" && keywordRegex
           ? { titleMatch: -1, publishedDate: -1 }
-          : { publishedDate: -1 }),
-    };
+          : { publishedDate: -1 };
 
-    const now = new Date();
-    const pipeline: mongoose.PipelineStage[] = [
-      { $match: filter },
-      {
-        $addFields: {
-          // 0 = open (deadline ahead, no winner), 1 = upcoming (draft TOR only), 2 = the rest.
-          biddingRank: {
-            $switch: {
-              branches: [
-                {
-                  case: {
-                    $and: [
-                      { $gt: ["$submissionDeadline", now] },
-                      { $eq: [{ $ifNull: ["$awardAnnouncedAt", null] }, null] },
-                      { $eq: [{ $size: { $ifNull: ["$contracts", []] } }, 0] },
-                    ],
-                  },
-                  then: 0,
-                },
-                {
-                  case: {
-                    $and: [
-                      { $eq: ["$biddingStage", "upcoming"] },
-                      { $eq: [{ $ifNull: ["$submissionDeadline", null] }, null] },
-                    ],
-                  },
-                  then: 1,
-                },
-              ],
-              default: 2,
-            },
-          },
-        },
-      },
-    ];
+    const pipeline: mongoose.PipelineStage[] = [{ $match: filter }];
     if (keywordRegex && effectiveSort === "relevance") {
       pipeline.push({
         $addFields: {
