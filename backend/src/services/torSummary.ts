@@ -6,6 +6,7 @@
 import { Tor } from "../models/index.js";
 import { GEMINI_MODEL as MODEL, getGenAI as getClient, MAX_PDF_BYTES } from "./genai.js";
 import { NonRetryableError, withRetry } from "./http.js";
+import { toArabicDigitsOpt } from "./thaiDigits.js";
 
 // Dates and years are converted here rather than by the model, which
 // dropped month names when asked to convert Gregorian dates itself.
@@ -24,7 +25,7 @@ function thaiDate(value?: Date | null) {
  * Bumped when the prompt changes, so summaries written by an older prompt
  * are regenerated on their next view.
  */
-const PROMPT_VERSION = 3;
+const PROMPT_VERSION = 5;
 const SUMMARY_MODEL = `${MODEL}#v${PROMPT_VERSION}`;
 
 /** A winning price this far below the reference price is likely bad data, not a discount. */
@@ -66,7 +67,6 @@ function buildFacts(tor: any) {
     ราคากลาง: finalPrice == null || discount ? reference : undefined,
     เปิดรับข้อเสนอ: thaiDate(tor.tenderStartDate),
     ปิดรับข้อเสนอ: thaiDate(tor.submissionDeadline),
-    เนื้อหาจากเอกสาร_TOR: tor.detailSummary,
     รายการที่จัดซื้อ: (tor.items ?? []).map((i: any) => ({
       รายละเอียด: i.description,
       จำนวน: i.quantity,
@@ -94,18 +94,29 @@ function buildPrompt(tor: any, hasDocument: boolean): string {
       ? "แนบเอกสาร TOR หรือประกาศเชิญชวนตัวจริงมาด้วย ให้ใช้เนื้อหาจากเอกสารเป็นหลัก และใช้ข้อมูล JSON ด้านล่างประกอบ"
       : "ใช้ข้อมูล JSON ด้านล่าง",
     "หน้าเว็บแสดงชื่อ หน่วยงาน วิธีจัดซื้อ งบประมาณ และวันที่เป็นตารางอยู่แล้ว ห้ามทวนเป็นรายการ field แบบ \"วิธีจัดซื้อจัดจ้าง: ...\"",
+    ...(tor.detailSummary
+      ? [
+          "หน้าเว็บมีกล่อง \"รายละเอียดโครงการ\" ที่สรุปสั้นๆ ไว้แล้วดังนี้ ห้ามเขียนซ้ำ ให้ลงรายละเอียดที่ลึกกว่านี้แทน:",
+          tor.detailSummary,
+        ]
+      : []),
     "",
-    "รูปแบบ:",
-    "- ย่อหน้าแรก 2-3 ประโยค: งานนี้คือการซื้อหรือจ้างอะไร เพื่อแก้ปัญหาหรือใช้งานอะไร ขนาดงานแค่ไหน",
-    "- ตามด้วย 4-8 ข้อ ขึ้นต้นด้วย \"- \" และขึ้นต้นข้อด้วยหัวข้อสั้นๆ ตามด้วย \":\" เลือกเฉพาะเรื่องที่มีข้อมูล เช่น",
-    "  ขอบเขตงาน: สิ่งที่ต้องส่งมอบหรือทำ ส่วนประกอบหลักของระบบหรือของที่ซื้อ",
-    "  คุณสมบัติผู้ยื่น: ข้อกำหนดที่ไม่ใช่ข้อทั่วไป เช่น ผลงานที่ต้องเคยทำ ใบรับรอง มาตรฐาน",
-    "  ระยะเวลา: ช่วงเปิด-ปิดรับข้อเสนอ ระยะเวลาส่งมอบหรือดำเนินงาน หรือระยะเวลาสัญญาและการเบิกจ่าย",
-    "  การรับประกันและบริการ: ระยะรับประกัน SLA การบำรุงรักษา การอบรม",
-    "  การชำระเงินและค่าปรับ: งวดเงิน อัตราค่าปรับ",
+    "รูปแบบ (ละเอียดกว่ารายละเอียดโครงการ สำหรับคนที่กำลังเตรียมยื่นข้อเสนอ):",
+    "- ย่อหน้าแรก 1-2 ประโยค: ภาพรวมว่างานนี้แก้ปัญหาหรือใช้งานอะไร",
+    "- ตามด้วย 6-10 ข้อ ขึ้นต้นด้วย \"- \" และขึ้นต้นข้อด้วยหัวข้อสั้นๆ ตามด้วย \":\" แต่ละข้อยาวได้ 1-2 ประโยค เลือกเฉพาะเรื่องที่มีข้อมูล เช่น",
+    "  ขอบเขตงาน: แยกส่วนประกอบหรือกิจกรรมที่ต้องทำให้ชัด",
+    "  ข้อกำหนดทางเทคนิค: มาตรฐาน ซอฟต์แวร์/ระบบที่ต้องรองรับ ความปลอดภัย การเชื่อมต่อกับระบบเดิม",
+    "  คุณสมบัติผู้ยื่น: ข้อกำหนดที่ไม่ใช่ข้อทั่วไป เช่น ผลงานที่ต้องเคยทำ ใบรับรอง บุคลากร",
+    "  เกณฑ์การพิจารณา: ใช้ราคาหรือเกณฑ์ราคาประกอบคุณภาพ และน้ำหนักคะแนนถ้ามี",
+    "  การส่งมอบ: งวดงาน สิ่งที่ส่งในแต่ละงวด ระยะเวลาส่งมอบหรือดำเนินงาน",
+    "  การรับประกันและบริการ: ระยะรับประกัน SLA เวลาตอบสนอง การบำรุงรักษา การอบรม",
+    "  การชำระเงินและค่าปรับ: งวดเงินเป็นเปอร์เซ็นต์ อัตราค่าปรับ หลักประกันสัญญา",
+    "  ระยะเวลา: ช่วงเปิด-ปิดรับข้อเสนอ หรือระยะเวลาสัญญาและการเบิกจ่าย",
     "  ผลการจัดซื้อ: ใครได้ไป ในราคาเท่าไร และ \"เทียบราคากลาง\" ตามที่ให้มา",
     "",
     "กติกา:",
+    "- ห้ามพูดถึงราคากลาง งบประมาณ วันที่ประกาศ และวัน-เวลายื่นข้อเสนอ เพราะหน้าเว็บแสดงแล้ว (ยกเว้นในข้อผลการจัดซื้อ)",
+    "- ถ้าเอกสารมีข้อมูลน้อย ให้เขียนเท่าที่มีข้อมูลใหม่ แม้จะได้แค่ 2-3 ข้อ ห้ามเติมด้วยการทวนชื่อโครงการหรือข้อความกว้างๆ เช่น \"เป็นไปตามเอกสารประกวดราคากำหนด\"",
     "- ไม่ต้องใส่จำนวนชิ้นหรือตัวเลขสเปกที่อ่านจากเอกสารสแกน (ตัวเลขไทยในเอกสารสแกนอ่านผิดได้ง่าย) แต่ระยะเวลาและเปอร์เซ็นต์ใส่ได้",
     "- ข้ามคุณสมบัติผู้ยื่นแบบทั่วไปที่ทุกประกาศมี เช่น ไม่เป็นผู้ล้มละลาย ไม่ถูกระบุชื่อเป็นผู้ทิ้งงาน",
     "- ราคากลางไม่ใช่งบประมาณ ถ้าไม่มี field งบประมาณ ห้ามเขียนถึงงบประมาณ",
@@ -173,7 +184,7 @@ export async function getTorSummary(id: string) {
           return await client.models.generateContent({
             model: MODEL,
             contents,
-            config: { temperature: 0.2, maxOutputTokens: 1500 },
+            config: { temperature: 0.2, maxOutputTokens: 2500 },
           });
         } catch (error) {
           if ((error as { status?: number }).status !== 429) throw new NonRetryableError(String(error));
@@ -183,7 +194,7 @@ export async function getTorSummary(id: string) {
       3,
       2000,
     );
-    text = response.text?.trim();
+    text = toArabicDigitsOpt(response.text?.trim());
   } catch (error) {
     // An older summary beats an error message; it's replaced on a later view.
     if (cached?.text && cached.generatedAt) {
