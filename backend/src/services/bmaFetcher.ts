@@ -10,6 +10,7 @@ import fs from "fs";
 import { Tor } from "../models/index.js";
 import { NonRetryableError, withRetry } from "./http.js";
 import { withSyncLog, type SyncCounts, type SyncTrigger } from "./syncRun.js";
+import { toArabicDigitsOpt } from "./thaiDigits.js";
 
 /** UNSPSC prefixes we treat as IT-related. */
 const IT_PREFIXES = ["43", "8111", "8116"];
@@ -152,7 +153,7 @@ function mapRelease(release: any) {
   const ocid = release.ocid;
   if (!ocid) return null;
 
-  const title = release.planning?.budget?.project;
+  const title = toArabicDigitsOpt(release.planning?.budget?.project);
   const agency = release.buyer?.name;
   if (!title || !agency) return null;
 
@@ -181,7 +182,7 @@ function mapRelease(release: any) {
     : undefined;
 
   const tenderItems = items.map((i: any) => ({
-    description: i.description,
+    description: toArabicDigitsOpt(i.description),
     unspscCode: i.classification?.id,
     unspscDescription: i.classification?.description,
     quantity: i.quantity,
@@ -194,13 +195,13 @@ function mapRelease(release: any) {
     ...new Set<string>(
       (release.awards ?? [])
         .flatMap((a: any) => a.suppliers ?? [])
-        .map((s: any) => s.name)
+        .map((s: any) => toArabicDigitsOpt(s.name))
         .filter(Boolean),
     ),
   ];
 
   const contracts = (release.contracts ?? []).map((c: any) => ({
-    title: c.title,
+    title: toArabicDigitsOpt(c.title),
     startDate: parseBmaDate(c.period?.startDate),
     endDate: parseBmaDate(c.period?.endDate),
     amount: c.value?.amount,
