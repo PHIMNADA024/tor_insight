@@ -13,6 +13,7 @@ import { withSyncLog, type SyncCounts, type SyncTrigger } from "./syncRun.js";
 import { readDeadline } from "./deadlineReader.js";
 import { summarizeTorDocument } from "./torDocumentSummary.js";
 import { readWinners } from "./winnerReader.js";
+import { toArabicDigits } from "./thaiDigits.js";
 
 const SITE = "https://egp2.bangkok.go.th";
 const API = `${SITE}/appapi/api`;
@@ -174,7 +175,7 @@ export function isSoftware(name: string) {
  * อิเล็กทรอนิกส์ (e-bidding)". Strip it to "ซื้อ…", like BMA's contract titles.
  */
 export function cleanTitle(name: string) {
-  return name
+  return toArabicDigits(name)
     .trim()
     .replace(/^ประกวดราคา\s*/, "")
     .replace(/\s*(ด้วย|โดย)วิธี.*$/, "")
