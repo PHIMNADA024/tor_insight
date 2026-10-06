@@ -4,6 +4,7 @@
  * data (items, contracts); e-GP's equivalent only exists inside the PDF.
  */
 import { askAboutPdf, MAX_PDF_BYTES } from "./genai.js";
+import { toArabicDigits } from "./thaiDigits.js";
 
 const PROMPT = [
   "สรุปเอกสารจัดซื้อจัดจ้างนี้เป็นภาษาไทยแบบสั้น ให้อ่านแล้วจับใจความได้ในไม่กี่วินาที",
@@ -26,6 +27,6 @@ const PROMPT = [
 /** Returns the summary, or null if the PDF is unusable. */
 export async function summarizeTorDocument(pdf: Buffer): Promise<string | null> {
   if (pdf.length > MAX_PDF_BYTES) return null;
-  const text = (await askAboutPdf(pdf, PROMPT, false)).trim();
+  const text = toArabicDigits((await askAboutPdf(pdf, PROMPT, false)).trim());
   return text || null;
 }

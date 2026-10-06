@@ -26,6 +26,29 @@ function closingTime(deadline: string) {
  * has one. Without dates, a signed contract still means bidding has closed.
  * Returns null when there's nothing to go on.
  */
+/** Calendar day in Bangkok, as a day count, so "tomorrow" means the next Thai date. */
+function bangkokDay(date: Date) {
+  return Math.floor((date.getTime() + 7 * 60 * 60 * 1000) / DAY_MS);
+}
+
+/**
+ * How long bidding stays open, e.g. "เหลืออีก 5 วัน", "ปิดพรุ่งนี้",
+ * "ปิดวันนี้ 12:00 น.". Null unless bids are being accepted now.
+ */
+export function timeLeftLabel(tor: BiddingInput, now = new Date()): string | null {
+  if (biddingStatus(tor, now)?.tone !== "open" || !tor.submissionDeadline) return null;
+  const deadline = new Date(tor.submissionDeadline);
+  const exact = closingTime(tor.submissionDeadline).getTime() === deadline.getTime();
+  // A date-only deadline (UTC midnight) names its day directly; an exact one is read in Bangkok time.
+  const lastDay = exact ? bangkokDay(deadline) : Math.floor(deadline.getTime() / DAY_MS);
+  const days = lastDay - bangkokDay(now);
+  const time = deadline.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
+
+  if (days <= 0) return exact ? `ปิดวันนี้ ${time} น.` : "ปิดวันนี้";
+  if (days === 1) return exact ? `ปิดพรุ่งนี้ ${time} น.` : "ปิดพรุ่งนี้";
+  return `เหลืออีก ${days} วัน`;
+}
+
 export function biddingStatus(tor: BiddingInput, now = new Date()): BiddingStatus | null {
   const opensAt = tor.tenderStartDate ? new Date(tor.tenderStartDate) : undefined;
   const closesAt = tor.submissionDeadline ? closingTime(tor.submissionDeadline) : undefined;

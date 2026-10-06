@@ -16,6 +16,8 @@ import { NonRetryableError, sleep, withRetry } from "./http.js";
 import { withSyncLog, type SyncCounts, type SyncTrigger } from "./syncRun.js";
 import { askAboutPdf, MAX_PDF_BYTES } from "./genai.js";
 import { readDeadline } from "./deadlineReader.js";
+import { toArabicDigitsOpt } from "./thaiDigits.js";
+import { egpSearchUrl } from "./egpLinks.js";
 import { summarizeTorDocument } from "./torDocumentSummary.js";
 import {
   budgetDescription,
@@ -27,7 +29,6 @@ import {
 } from "./egpFetcher.js";
 
 const FEED_URL = "https://process3.gprocurement.go.th/EPROCRssFeedWeb/egpannouncerss.xml?anounceType=D0";
-const PROJECT_URL = "https://process3.gprocurement.go.th/egp2procmainWeb/jsp/procsearch.sch?project_id=";
 const USER_AGENT = "TOR-Insight student project (procurement search)";
 const REQUEST_GAP_MS = 1500;
 
@@ -142,7 +143,7 @@ async function processItem(item: FeedItem, knownNumbers: Set<string>): Promise<P
         egpProjectNumber: item.projectNumber,
         title: cleanTitle(item.title),
         description: budgetDescription(fiscalYear),
-        agency: facts.agency ?? "ไม่ระบุหน่วยงาน",
+        agency: toArabicDigitsOpt(facts.agency) ?? "ไม่ระบุหน่วยงาน",
         category: "tender_invitation",
         itCategory: isSoftware(item.title) ? "software" : "it_equipment",
         budgetAmount: facts.budget ?? facts.referencePrice,
@@ -153,7 +154,8 @@ async function processItem(item: FeedItem, knownNumbers: Set<string>): Promise<P
         submissionDeadline: deadline.deadline,
         detailSummary,
         invitationPdfUrl: item.link,
-        sourceUrl: `${PROJECT_URL}${item.projectNumber}`,
+        // e-GP's public announcement search, pre-filled with the project number.
+        sourceUrl: egpSearchUrl(item.projectNumber),
         status: "published",
         publishedDate: announcedAt,
         createdAt: now,

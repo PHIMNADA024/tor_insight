@@ -13,6 +13,8 @@ import { withSyncLog, type SyncCounts, type SyncTrigger } from "./syncRun.js";
 import { readDeadline } from "./deadlineReader.js";
 import { summarizeTorDocument } from "./torDocumentSummary.js";
 import { readWinners } from "./winnerReader.js";
+import { toArabicDigits } from "./thaiDigits.js";
+import { egpSearchUrl } from "./egpLinks.js";
 
 const SITE = "https://egp2.bangkok.go.th";
 const API = `${SITE}/appapi/api`;
@@ -174,7 +176,7 @@ export function isSoftware(name: string) {
  * อิเล็กทรอนิกส์ (e-bidding)". Strip it to "ซื้อ…", like BMA's contract titles.
  */
 export function cleanTitle(name: string) {
-  return name
+  return toArabicDigits(name)
     .trim()
     .replace(/^ประกวดราคา\s*/, "")
     .replace(/\s*(ด้วย|โดย)วิธี.*$/, "")
@@ -334,7 +336,7 @@ async function processProject(
     awardPdfUrl,
     awardAmount,
     contractStatus: detail.masterContractAvailableName ?? undefined,
-    sourceUrl: `${SITE}/project-detail/${project.projectId}`,
+    sourceUrl: egpSearchUrl(project.projectNumber),
     sourceUpdatedAt: toDate(announcements.at(-1)?.projectAnnouncementPublishDate ?? null),
   };
 
@@ -512,7 +514,7 @@ async function collectUpcoming(bmaNumbers: Set<string>) {
             fiscalYear: fiscalYearFromNumber(p.projectNumber),
             detailSummary,
             torPdfUrl: torUrl,
-            sourceUrl: `${SITE}/project-detail/${p.projectId}`,
+            sourceUrl: egpSearchUrl(p.projectNumber),
             sourceUpdatedAt: toDate(announcements.at(-1)?.projectAnnouncementPublishDate ?? null),
             status: "published",
             publishedDate: firstSeen,

@@ -4,6 +4,7 @@
  * the file; neither appears anywhere else.
  */
 import { askAboutPdf, MAX_PDF_BYTES } from "./genai.js";
+import { toArabicDigits } from "./thaiDigits.js";
 
 const PROMPT = [
   "จากประกาศรายชื่อผู้ชนะการเสนอราคานี้ ระบุผู้ชนะ (ผู้ได้รับการคัดเลือก) ทุกราย พร้อมราคาที่ชนะ",
@@ -55,7 +56,7 @@ export async function readWinners(pdf: Buffer): Promise<WinnerResult> {
   const prices = winners.map((w) => w.price);
   return {
     // One company can win several lots; list it once.
-    names: [...new Set(winners.map((w) => w.name))],
+    names: [...new Set(winners.map((w) => toArabicDigits(w.name)))],
     amount: prices.length > 0 && prices.every((p) => p != null)
       ? prices.reduce((sum, p) => sum! + p!, 0)
       : undefined,

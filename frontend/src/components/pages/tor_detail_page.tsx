@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Building2, ExternalLink, Sparkles } from "lucide-react";
+import { ArrowLeft, Building2, Clock, ExternalLink, Sparkles } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Button } from "@/components/ui/button";
 import { categoryLabel } from "@/lib/categories";
-import { BiddingBadge } from "@/components/BiddingBadge";
+import { BiddingBadge, timeLeftLabel } from "@/components/BiddingBadge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -66,6 +66,14 @@ function formatDate(value?: string): string {
   if (Number.isNaN(d.getTime())) return NO_DATA;
   // th-TH gives the Buddhist year (2569) and Thai month names.
   return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
+}
+
+/**
+ * The OCID without its source prefix: "egp-69099318566" → "69099318566",
+ * "ocds-bq4ldt-6904…-001" → "6904…-001". Display only; the stored OCID keeps it.
+ */
+function referenceNumber(ocid: string): string {
+  return ocid.replace(/^(ocds-[a-z0-9]+-|egp-|gproc-|mea-)/i, "");
 }
 
 function formatMoney(value?: number): string {
@@ -292,7 +300,7 @@ export function TorPage({ id }: { id: string }) {
     ["งบประมาณ (บาท)", formatMoney(tor.budgetAmount)],
     ["วงเงินจัดซื้อจัดจ้าง (บาท)", formatMoney(tor.tenderAmount)],
     ["หมวดหมู่", torCategoryLabel],
-    ["เลขอ้างอิง (OCID)", tor.ocid],
+    ["เลขอ้างอิง", referenceNumber(tor.ocid)],
   ];
 
   // Headline figure is always the budget. For BMA records this is the whole
@@ -301,6 +309,10 @@ export function TorPage({ id }: { id: string }) {
   const contracts = tor.contracts ?? [];
   const headlineLabel = "งบประมาณ (บาท)";
   const headlineAmount = tor.budgetAmount;
+  const bidding = { ...tor, hasWinner: contracts.length > 0 || !!tor.awardAnnouncedAt };
+  const timeLeft = timeLeftLabel(bidding);
+  // 3 days or less left is shown as urgent.
+  const timeLeftUrgent = !!timeLeft && (!timeLeft.startsWith("เหลืออีก") || Number(timeLeft.match(/\d+/)?.[0]) <= 3);
 
   const items = tor.items ?? [];
   const suppliers = tor.suppliers ?? [];
@@ -324,7 +336,7 @@ export function TorPage({ id }: { id: string }) {
           <div>
             <h1 className="text-2xl font-semibold leading-snug tracking-tight">{tor.title}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <BiddingBadge tor={{ ...tor, hasWinner: tor.contracts.length > 0 || !!tor.awardAnnouncedAt }} />
+              <BiddingBadge tor={bidding} />
               <span className="flex items-center gap-1">
                 <Building2 className="size-3.5" /> {tor.agency}
               </span>
@@ -341,6 +353,17 @@ export function TorPage({ id }: { id: string }) {
           <div className={`h-fit ${card} p-4`}>
             <p className="text-xs text-muted-foreground">{headlineLabel}</p>
             <p className="mt-1 text-2xl font-semibold text-success">{formatMoney(headlineAmount)}</p>
+            {timeLeft && (
+              <div className="mt-3 border-t border-border pt-3">
+                <p className="text-xs text-muted-foreground">เวลาที่เหลือในการยื่นข้อเสนอ</p>
+                <p
+                  className={`mt-1 flex items-center gap-1.5 text-lg font-semibold ${timeLeftUrgent ? "text-warning" : "text-foreground"}`}
+                >
+                  <Clock className="size-4" />
+                  {timeLeft}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
