@@ -17,6 +17,7 @@ import { withSyncLog, type SyncCounts, type SyncTrigger } from "./syncRun.js";
 import { askAboutPdf, MAX_PDF_BYTES } from "./genai.js";
 import { readDeadline } from "./deadlineReader.js";
 import { toArabicDigitsOpt } from "./thaiDigits.js";
+import { egpSearchUrl } from "./egpLinks.js";
 import { summarizeTorDocument } from "./torDocumentSummary.js";
 import {
   budgetDescription,
@@ -28,7 +29,6 @@ import {
 } from "./egpFetcher.js";
 
 const FEED_URL = "https://process3.gprocurement.go.th/EPROCRssFeedWeb/egpannouncerss.xml?anounceType=D0";
-const EGP_SEARCH_URL = "https://process5.gprocurement.go.th/egp-agpc01-web/announcement";
 const USER_AGENT = "TOR-Insight student project (procurement search)";
 const REQUEST_GAP_MS = 1500;
 
@@ -155,7 +155,7 @@ async function processItem(item: FeedItem, knownNumbers: Set<string>): Promise<P
         detailSummary,
         invitationPdfUrl: item.link,
         // e-GP's public announcement search, pre-filled with the project number.
-        sourceUrl: `${EGP_SEARCH_URL}?keywordSearch=${item.projectNumber}`,
+        sourceUrl: egpSearchUrl(item.projectNumber),
         status: "published",
         publishedDate: announcedAt,
         createdAt: now,
