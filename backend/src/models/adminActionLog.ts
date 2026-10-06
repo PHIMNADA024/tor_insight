@@ -14,6 +14,7 @@ const adminActionLogSchema = new Schema(
         "feedback.status_change",
         "feedback.respond",
         "tor.status_change",
+        "tor.edit",
       ],
       required: true,
     },

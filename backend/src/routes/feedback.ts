@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { Feedback, type FeedbackDoc } from "../models/feedback.js";
+import { Tor } from "../models/tor.js";
 import { Notification } from "../models/notification.js";
 import { User } from "../models/user.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -30,7 +31,6 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const MIN_DESCRIPTION_LENGTH = 10;
 const MAX_DESCRIPTION_LENGTH = 2000;
-const MAX_TOR_REFERENCE_LENGTH = 200;
 
 const CATEGORIES_REQUIRING_REFERENCE = [
   "incorrect_info",
@@ -85,7 +85,7 @@ async function notifyAdminsOfNewFeedback(
  */
 router.post("/", requireAuth, async (req, res) => {
   try {
-    const { category, description, torId, torReference } = req.body;
+    const { category, description, torId } = req.body;
 
     // --- Required fields ---
     if (typeof category !== "string" || category.length === 0) {
@@ -115,30 +115,29 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
     
-    // --- TOR reference required for TOR-specific categories ---
-    const trimmedReference =
-      typeof torReference === "string" ? torReference.trim() : "";
+    const requiresTor = CATEGORIES_REQUIRING_REFERENCE.includes(category as (typeof CATEGORIES_REQUIRING_REFERENCE)[number]);
 
-    if (
-      CATEGORIES_REQUIRING_REFERENCE.some((requiredCategory) => requiredCategory === category) &&
-      !torId &&
-      !trimmedReference
-    ) {      
-        return res.status(400).json({
-        message: "Please specify which TOR this feedback relates to",
-      });
-    }
-
-    if (trimmedReference.length > MAX_TOR_REFERENCE_LENGTH) {
+    if (requiresTor && !torId) {
       return res.status(400).json({
-        message: `TOR reference must be under ${MAX_TOR_REFERENCE_LENGTH} characters`,
+        message: "Please select the TOR this feedback relates to",
       });
     }
 
-    // --- torId shape check, if provided ---
-    if (torId && !/^[0-9a-fA-F]{24}$/.test(torId)) {
+    if (torId !== undefined && (typeof torId !== "string" || !/^[0-9a-fA-F]{24}$/.test(torId))) {
       return res.status(400).json({ message: "Invalid TOR id" });
     }
+
+    const linkedTor = typeof torId === "string"
+      ? await Tor.findOne({ _id: torId, status: "published" }).select("title agency")
+      : null;
+
+    if (torId && !linkedTor) {
+      return res.status(404).json({ message: "Selected TOR was not found or is not published" });
+    }
+
+    const torReference = linkedTor
+      ? `${linkedTor.title} — ${linkedTor.agency}`
+      : undefined;
 
     // --- Rate limiting: prevent spam submissions ---
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -171,7 +170,7 @@ router.post("/", requireAuth, async (req, res) => {
       category,
       description: trimmedDescription,
       torId: torId || undefined,
-      torReference: trimmedReference || undefined,
+      torReference,
     });
 
     notifyAdminsOfNewFeedback(
@@ -179,7 +178,7 @@ router.post("/", requireAuth, async (req, res) => {
       req.user!.name,
       category,
       trimmedDescription,
-      trimmedReference || undefined,
+      torReference,
     ).catch((error) => {
       console.error("Failed to notify admins of new feedback:", error);
     });

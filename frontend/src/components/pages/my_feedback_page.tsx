@@ -45,11 +45,20 @@ type FeedbackItem = {
     createdAt: string;
 };
 
+type TorOption = {
+    id: string;
+    title: string;
+    agency: string;
+};
+
 export default function MyFeedbackPage() {
     const router = useRouter();
 
     const [category, setCategory] = useState("app_feedback");
-    const [torReference, setTorReference] = useState("");
+    const [torSearch, setTorSearch] = useState("");
+    const [torResults, setTorResults] = useState<TorOption[]>([]);
+    const [selectedTor, setSelectedTor] = useState<TorOption | null>(null);
+    const [isSearchingTors, setIsSearchingTors] = useState(false);
     const [description, setDescription] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [formMessage, setFormMessage] = useState<string | null>(null);
@@ -60,6 +69,56 @@ export default function MyFeedbackPage() {
     const [showAll, setShowAll] = useState(false);
 
     const needsTorReference = category !== "app_feedback" && category !== "other";
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const torId = params.get("torId");
+        if (!torId) return;
+
+        let cancelled = false;
+        fetch(`${API_URL}/api/tors/${encodeURIComponent(torId)}`)
+            .then(async (res) => {
+                if (!res.ok) throw new Error("TOR not found");
+                return res.json() as Promise<TorOption>;
+            })
+            .then((tor) => {
+                if (cancelled) return;
+                setSelectedTor(tor);
+                setCategory("incorrect_info");
+            })
+            .catch(() => {
+                if (!cancelled) setFormError("ไม่พบ TOR ที่เลือก กรุณาค้นหาและเลือก TOR อีกครั้ง");
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!needsTorReference || selectedTor || torSearch.trim().length < 2) return;
+
+        let cancelled = false;
+        const timeout = window.setTimeout(async () => {
+            setIsSearchingTors(true);
+            try {
+                const params = new URLSearchParams({ keyword: torSearch.trim(), limit: "8" });
+                const res = await fetch(`${API_URL}/api/tors?${params.toString()}`);
+                if (!res.ok) throw new Error("TOR search failed");
+                const data = await res.json();
+                if (!cancelled) setTorResults(data.results ?? []);
+            } catch {
+                if (!cancelled) setTorResults([]);
+            } finally {
+                if (!cancelled) setIsSearchingTors(false);
+            }
+        }, 250);
+
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timeout);
+        };
+    }, [needsTorReference, selectedTor, torSearch]);
 
     async function loadFeedback(): Promise<FeedbackItem[]> {
         const token = getToken();
@@ -119,8 +178,8 @@ async function handleSubmit(e: React.FormEvent) {
         return;
     }
 
-    if (needsTorReference && !torReference.trim()) {
-        setFormError("กรุณาระบุ TOR ที่เกี่ยวข้อง");
+    if (needsTorReference && !selectedTor) {
+        setFormError("กรุณาค้นหาและเลือก TOR ที่เกี่ยวข้องจากรายการ");
         return;
     }
 
@@ -136,7 +195,7 @@ async function handleSubmit(e: React.FormEvent) {
             body: JSON.stringify({
                 category,
                 description: trimmedDescription,
-                torReference: needsTorReference ? torReference.trim() : undefined,
+                torId: needsTorReference ? selectedTor?.id : undefined,
             }),
         });
 
@@ -149,7 +208,9 @@ async function handleSubmit(e: React.FormEvent) {
 
         setFormMessage("ส่งข้อเสนอแนะเรียบร้อยแล้ว ขอบคุณสำหรับความคิดเห็นของคุณ");
         setDescription("");
-        setTorReference("");
+        setTorSearch("");
+        setTorResults([]);
+        setSelectedTor(null);
         loadFeedback().then(setItems);
     } catch {
         setFormError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
@@ -180,7 +241,16 @@ async function handleSubmit(e: React.FormEvent) {
                         <select
                             id="category"
                             value={category}
-                            onChange={(e) => setCategory(e.target.value)}
+                            onChange={(e) => {
+                                const nextCategory = e.target.value;
+                                setCategory(nextCategory);
+                                if (nextCategory === "app_feedback" || nextCategory === "other") {
+                                    setSelectedTor(null);
+                                    setTorSearch("");
+                                    setTorResults([]);
+                                    setIsSearchingTors(false);
+                                }
+                            }}
                             className="h-9 w-full cursor-pointer rounded-md border border-input bg-card px-3 text-sm"
                         >
                             {CATEGORY_OPTIONS.map((opt) => (
@@ -193,15 +263,64 @@ async function handleSubmit(e: React.FormEvent) {
 
                     {needsTorReference && (
                         <div className="space-y-1.5">
-                            <Label htmlFor="tor-reference">
-                                ชื่อโครงการหรือหน่วยงานที่เกี่ยวข้อง
-                            </Label>
-                            <Input
-                                id="tor-reference"
-                                placeholder="เช่น โครงการพัฒนาระบบ... หรือชื่อหน่วยงาน"
-                                value={torReference}
-                                onChange={(e) => setTorReference(e.target.value)}
-                            />
+                            <Label htmlFor="tor-search">เลือก TOR ที่เกี่ยวข้อง</Label>
+                            {selectedTor ? (
+                                <div className="flex items-start cursor-pointer justify-between gap-3 rounded-md border border-primary/30 bg-accent/40 p-3">
+                                    <div>
+                                        <p className="text-sm font-medium">{selectedTor.title}</p>
+                                        <p className="text-xs text-muted-foreground">{selectedTor.agency}</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedTor(null);
+                                            setTorSearch("");
+                                        }}
+                                        className="text-xs text-primary hover:underline cursor-pointer"
+                                    >
+                                        เปลี่ยน TOR
+                                    </button>
+                                </div>
+                            ) : (
+                                <>
+                                    <Input
+                                        id="tor-search"
+                                        placeholder="ค้นหาด้วยชื่อโครงการหรือหน่วยงาน (อย่างน้อย 2 ตัวอักษร)"
+                                        value={torSearch}
+                                        onChange={(e) => {
+                                            setTorSearch(e.target.value);
+                                            setTorResults([]);
+                                            setIsSearchingTors(false);
+                                        }}
+                                        autoComplete="off"
+                                    />
+                                    {isSearchingTors && (
+                                        <p className="text-xs text-muted-foreground">กำลังค้นหา TOR...</p>
+                                    )}
+                                    {!isSearchingTors && torSearch.trim().length >= 2 && torResults.length === 0 && (
+                                        <p className="text-xs text-muted-foreground">ไม่พบ TOR ที่เผยแพร่ตรงกับคำค้นหา</p>
+                                    )}
+                                    {torResults.length > 0 && (
+                                        <ul className="max-h-60 overflow-y-auto rounded-md border border-border">
+                                            {torResults.map((tor) => (
+                                                <li key={tor.id}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSelectedTor(tor);
+                                                            setTorResults([]);
+                                                        }}
+                                                        className="w-full border-b border-border px-3 py-2 text-left last:border-b-0 hover:bg-muted"
+                                                    >
+                                                        <span className="block text-sm font-medium">{tor.title}</span>
+                                                        <span className="block text-xs text-muted-foreground">{tor.agency}</span>
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </>
+                            )}
                         </div>
                     )}
 

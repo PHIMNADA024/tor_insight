@@ -191,6 +191,7 @@ export default function AdminFeedbackPage() {
                     <ul className="space-y-3">
                         {items_.map((item) => {
                             const isExpanded = expandedId === item._id;
+                            const isResolved = item.status === "resolved";
                             const userInfo =
                                 typeof item.userId === "object" ? item.userId : null;
 
@@ -249,7 +250,7 @@ export default function AdminFeedbackPage() {
                                             {item.adminResponse && (
                                                 <div className="rounded-md bg-accent p-3">
                                                     <p className="text-xs font-medium text-accent-foreground">
-                                                        คำตอบก่อนหน้า
+                                                        {isResolved ? "คำตอบที่ส่งให้ผู้ใช้แล้ว" : "คำตอบก่อนหน้า"}
                                                     </p>
                                                     <p className="mt-1 text-sm text-accent-foreground">
                                                         {item.adminResponse}
@@ -257,41 +258,45 @@ export default function AdminFeedbackPage() {
                                                 </div>
                                             )}
 
-                                            <div className="space-y-1.5">
-                                                <label className="text-xs text-muted-foreground">
-                                                    คำตอบถึงผู้ใช้ (จะถูกส่งเป็นการแจ้งเตือนในแอปและอีเมล)
-                                                </label>
-                                                <textarea
-                                                    rows={3}
-                                                    className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm"
-                                                    placeholder="พิมพ์คำตอบที่นี่..."
-                                                    value={responseDrafts[item._id] ?? ""}
-                                                    onChange={(e) =>
-                                                        setResponseDrafts((prev) => ({
-                                                            ...prev,
-                                                            [item._id]: e.target.value,
-                                                        }))
-                                                    }
-                                                />
-                                            </div>
+                                            {!isResolved && (
+                                                <>
+                                                    <div className="space-y-1.5">
+                                                        <label className="text-xs text-muted-foreground">
+                                                            คำตอบถึงผู้ใช้ (จะถูกส่งเป็นการแจ้งเตือนในแอปและอีเมล)
+                                                        </label>
+                                                        <textarea
+                                                            rows={3}
+                                                            className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm"
+                                                            placeholder="พิมพ์คำตอบที่นี่..."
+                                                            value={responseDrafts[item._id] ?? ""}
+                                                            onChange={(e) =>
+                                                                setResponseDrafts((prev) => ({
+                                                                    ...prev,
+                                                                    [item._id]: e.target.value,
+                                                                }))
+                                                            }
+                                                        />
+                                                    </div>
 
-                                            <div className="flex gap-2">
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    disabled={savingId === item._id}
-                                                    onClick={() => handleUpdate(item._id, "reviewed")}
-                                                >
-                                                    ทำเครื่องหมายว่ากำลังดำเนินการ
-                                                </Button>
-                                                <Button
-                                                    size="sm"
-                                                    disabled={savingId === item._id}
-                                                    onClick={() => handleUpdate(item._id, "resolved")}
-                                                >
-                                                    {savingId === item._id ? "กำลังบันทึก..." : "แก้ไขและปิดเรื่อง"}
-                                                </Button>
-                                            </div>
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            disabled={savingId === item._id}
+                                                            onClick={() => handleUpdate(item._id, "reviewed")}
+                                                        >
+                                                            ทำเครื่องหมายว่ากำลังดำเนินการ
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            disabled={savingId === item._id}
+                                                            onClick={() => handleUpdate(item._id, "resolved")}
+                                                        >
+                                                            {savingId === item._id ? "กำลังบันทึก..." : "แก้ไขและปิดเรื่อง"}
+                                                        </Button>
+                                                    </div>
+                                                </>
+                                            )}
                                         </div>
                                     )}
                                 </li>
