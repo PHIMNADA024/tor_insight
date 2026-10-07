@@ -303,7 +303,7 @@ export function TorPage({ id }: { id: string }) {
   const meta: [string, string][] = [
     ["วิธีจัดซื้อจัดจ้าง", tor.procurementMethod || NO_DATA],
     ["งบประมาณ (บาท)", formatMoney(tor.budgetAmount)],
-    ["วงเงินจัดซื้อจัดจ้าง (บาท)", formatMoney(tor.tenderAmount)],
+    ["ราคากลาง (บาท)", formatMoney(tor.tenderAmount)],
     ["หมวดหมู่", torCategoryLabel],
     ["เลขอ้างอิง", referenceNumber(tor.ocid)],
   ];
