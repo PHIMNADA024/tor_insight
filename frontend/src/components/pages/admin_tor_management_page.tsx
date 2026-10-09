@@ -16,6 +16,7 @@ import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CATEGORY_OPTIONS, categoryLabel } from "@/lib/categories";
+import { SiteHeader } from "../SiteHeader";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5050";
 
@@ -296,74 +297,258 @@ export default function AdminTorManagementPage() {
     }
 
     return (
-        <div className="flex min-h-screen bg-background">
-            <DashboardSidebar subtitle="ผู้ดูแลระบบ" items={items} activeLabel="จัดการ TOR" />
+        <div className="min-h-screen bg-background">
+            <SiteHeader />
 
-            <main className="flex-1 space-y-6 p-6">
-                <h1 className="text-xl font-semibold tracking-tight">จัดการ TOR</h1>
+            <div className="mx-auto flex max-w-7xl gap-6 px-4 py-8 sm:px-6">
+                <DashboardSidebar
+                    subtitle="ผู้ดูแลระบบ"
+                    items={items}
+                    activeLabel="จัดการ TOR"
+                />
 
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
-                    <div className="flex gap-2">
-                        {TABS.map((tab) => (
-                            <button
-                                key={tab.value}
-                                onClick={() => {
-                                    setError(null);
-                                    setIsLoading(true);
-                                    setEditingId(null);
-                                    setEditDraft({});
-                                    setActiveTab(tab.value);
-                                }}
-                                className={`cursor-pointer border-b-2 px-3 pb-2 text-sm ${
-                                    activeTab === tab.value
-                                        ? "border-primary font-medium text-primary"
-                                        : "border-transparent text-muted-foreground hover:text-foreground"
-                                }`}
-                            >
-                                {tab.label}
-                            </button>
-                        ))}
+                <main className="min-w-0 flex-1 space-y-6">
+                    <h1 className="text-xl font-semibold tracking-tight">จัดการ TOR</h1>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
+                        <div className="flex gap-2">
+                            {TABS.map((tab) => (
+                                <button
+                                    key={tab.value}
+                                    onClick={() => {
+                                        setError(null);
+                                        setIsLoading(true);
+                                        setEditingId(null);
+                                        setEditDraft({});
+                                        setActiveTab(tab.value);
+                                    }}
+                                    className={`cursor-pointer border-b-2 px-3 pb-2 text-sm ${
+                                        activeTab === tab.value
+                                            ? "border-primary font-medium text-primary"
+                                            : "border-transparent text-muted-foreground hover:text-foreground"
+                                    }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+                        <form onSubmit={handleSearchSubmit} className="flex flex-wrap gap-2 pb-2">
+                                <select
+                                    value={category}
+                                    onChange={(e) => setCategory(e.target.value)}
+                                    aria-label="กรองตามหมวดหมู่"
+                                    className="h-8 cursor-pointer rounded-md border border-input bg-card px-2 text-xs"
+                                >
+                                    {FILTER_CATEGORY_OPTIONS.map((opt) => (
+                                        <option key={opt} value={opt}>
+                                            {filterCategoryLabel(opt)}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <Input
+                                    placeholder="ค้นหาชื่อโครงการหรือหน่วยงาน"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="h-8 w-56"
+                                />
+
+                                <Button type="submit" size="sm" variant="outline">
+                                    <Search className="size-3.5" />
+                                </Button>
+                        </form>
                     </div>
-                    <form onSubmit={handleSearchSubmit} className="flex flex-wrap gap-2 pb-2">
-                            <select
-                                value={category}
-                                onChange={(e) => setCategory(e.target.value)}
-                                aria-label="กรองตามหมวดหมู่"
-                                className="h-8 cursor-pointer rounded-md border border-input bg-card px-2 text-xs"
-                            >
-                                {FILTER_CATEGORY_OPTIONS.map((opt) => (
-                                    <option key={opt} value={opt}>
-                                        {filterCategoryLabel(opt)}
-                                    </option>
+
+                    {error && <p className="text-sm text-destructive">{error}</p>}
+                    {successMessage && <p className="text-sm text-success">{successMessage}</p>}
+
+                    {isLoading ? (
+                        <p className="text-sm text-muted-foreground">กำลังโหลด...</p>
+                    ) : activeTab === "reported" ? (
+                        reported.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                                ไม่มี TOR ที่ถูกรายงานปัญหา
+                            </p>
+                        ) : (
+                            <ul className="space-y-4">
+                                {reported.map(({ tor, feedback }) => (
+                                    <li
+                                        key={tor._id}
+                                        className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)]"
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="font-medium">{tor.title}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {tor.agency}
+                                                </p>
+                                            </div>
+
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => startEdit(tor)}
+                                                >
+                                                    <Pencil className="mr-1 size-3.5" />
+                                                    แก้ไข TOR
+                                                </Button>
+                                                {tor.status === "archived" ? (
+                                                    <span className="self-center text-xs text-muted-foreground">เก็บถาวรแล้ว</span>
+                                                ) : (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="destructive"
+                                                        disabled={actioningId === tor._id}
+                                                        onClick={() => setConfirmAction({ id: tor._id, action: "archive" })}
+                                                    >
+                                                        <Archive className="mr-1 size-3.5" />
+                                                        เก็บถาวร
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {editingId === tor._id && (
+                                            <div className="mt-3 space-y-2 border-t border-border pt-3">
+                                                <Input
+                                                    value={editDraft.title ?? ""}
+                                                    onChange={(e) => setEditDraft((d) => ({ ...d, title: e.target.value }))}
+                                                    placeholder="ชื่อโครงการ"
+                                                />
+                                                <textarea
+                                                    value={editDraft.description ?? ""}
+                                                    onChange={(e) =>
+                                                        setEditDraft((d) => ({ ...d, description: e.target.value }))
+                                                    }
+                                                    placeholder="คำอธิบาย"
+                                                    rows={2}
+                                                    className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm"
+                                                />
+                                                <textarea
+                                                    value={editDraft.detailSummary ?? ""}
+                                                    onChange={(e) =>
+                                                        setEditDraft((d) => ({ ...d, detailSummary: e.target.value }))
+                                                    }
+                                                    placeholder="รายละเอียดเพิ่มเติม"
+                                                    rows={3}
+                                                    className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm"
+                                                />
+                                                <Input
+                                                    value={editDraft.agency ?? ""}
+                                                    onChange={(e) => setEditDraft((d) => ({ ...d, agency: e.target.value }))}
+                                                    placeholder="หน่วยงาน"
+                                                />
+
+                                                <select
+                                                    value={editDraft.category ?? ""}
+                                                    onChange={(e) =>
+                                                        setEditDraft((d) => ({ ...d, category: e.target.value }))
+                                                    }
+                                                    className="h-9 w-full cursor-pointer rounded-md border border-input bg-card px-3 text-sm"
+                                                >
+                                                    {CATEGORY_OPTIONS.map((opt) => (
+                                                        <option key={opt} value={opt}>
+                                                            {categoryLabel(opt)}
+                                                        </option>
+                                                    ))}
+                                                </select>
+
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <Input
+                                                        type="number"
+                                                        value={editDraft.budgetAmount ?? ""}
+                                                        onChange={(e) =>
+                                                            setEditDraft((d) => ({
+                                                                ...d,
+                                                                budgetAmount: Number(e.target.value),
+                                                            }))
+                                                        }
+                                                        placeholder="งบประมาณ"
+                                                    />
+                                                    <Input
+                                                        type="number"
+                                                        value={editDraft.tenderAmount ?? ""}
+                                                        onChange={(e) =>
+                                                            setEditDraft((d) => ({
+                                                                ...d,
+                                                                tenderAmount: Number(e.target.value),
+                                                            }))
+                                                        }
+                                                        placeholder="วงเงินประมูล"
+                                                    />
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <Input
+                                                        type="number"
+                                                        value={editDraft.fiscalYear ?? ""}
+                                                        onChange={(e) =>
+                                                            setEditDraft((d) => ({
+                                                                ...d,
+                                                                fiscalYear: Number(e.target.value),
+                                                            }))
+                                                        }
+                                                        placeholder="ปีงบประมาณ"
+                                                    />
+                                                    <Input
+                                                        value={editDraft.procurementMethod ?? ""}
+                                                        onChange={(e) =>
+                                                            setEditDraft((d) => ({
+                                                                ...d,
+                                                                procurementMethod: e.target.value,
+                                                            }))
+                                                        }
+                                                        placeholder="วิธีจัดซื้อจัดจ้าง"
+                                                    />
+                                                </div>
+
+                                                <Input
+                                                    value={editDraft.sourceUrl ?? ""}
+                                                    onChange={(e) =>
+                                                        setEditDraft((d) => ({ ...d, sourceUrl: e.target.value }))
+                                                    }
+                                                    placeholder="ลิงก์แหล่งที่มา"
+                                                />
+
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                        size="sm"
+                                                        disabled={actioningId === tor._id}
+                                                        onClick={() => saveEdit(tor._id)}
+                                                    >
+                                                        {actioningId === tor._id ? "กำลังบันทึก..." : "บันทึก"}
+                                                    </Button>
+                                                    <Button size="sm" variant="outline" onClick={cancelEdit}>
+                                                        ยกเลิก
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="mt-3 space-y-2 border-t border-border pt-3">
+                                            {feedback.map((f) => {
+                                                const userInfo =
+                                                    typeof f.userId === "object" ? f.userId : null;
+                                                return (
+                                                    <FeedbackRow
+                                                        key={f._id}
+                                                        feedback={f}
+                                                        userInfo={userInfo}
+                                                        onResolve={resolveFeedback}
+                                                    />
+                                                );
+                                            })}
+                                        </div>
+                                    </li>
                                 ))}
-                            </select>
-
-                            <Input
-                                placeholder="ค้นหาชื่อโครงการหรือหน่วยงาน"
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                className="h-8 w-56"
-                            />
-
-                            <Button type="submit" size="sm" variant="outline">
-                                <Search className="size-3.5" />
-                            </Button>
-                    </form>
-                </div>
-
-                {error && <p className="text-sm text-destructive">{error}</p>}
-                {successMessage && <p className="text-sm text-success">{successMessage}</p>}
-
-                {isLoading ? (
-                    <p className="text-sm text-muted-foreground">กำลังโหลด...</p>
-                ) : activeTab === "reported" ? (
-                    reported.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                            ไม่มี TOR ที่ถูกรายงานปัญหา
-                        </p>
+                            </ul>
+                        )
+                    ) : tors.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">ไม่มีรายการ</p>
                     ) : (
-                        <ul className="space-y-4">
-                            {reported.map(({ tor, feedback }) => (
+                        <ul className="space-y-3">
+                            {tors.map((tor) => (
                                 <li
                                     key={tor._id}
                                     className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)]"
@@ -372,7 +557,7 @@ export default function AdminTorManagementPage() {
                                         <div>
                                             <p className="font-medium">{tor.title}</p>
                                             <p className="text-xs text-muted-foreground">
-                                                {tor.agency}
+                                                {tor.agency} · {tor.status}
                                             </p>
                                         </div>
 
@@ -383,10 +568,27 @@ export default function AdminTorManagementPage() {
                                                 onClick={() => startEdit(tor)}
                                             >
                                                 <Pencil className="mr-1 size-3.5" />
-                                                แก้ไข TOR
+                                                แก้ไข
                                             </Button>
-                                            {tor.status === "archived" ? (
-                                                <span className="self-center text-xs text-muted-foreground">เก็บถาวรแล้ว</span>
+
+                                            {activeTab === "archived" ? (
+                                                <Button
+                                                    size="sm"
+                                                    disabled={actioningId === tor._id}
+                                                    onClick={() => setConfirmAction({ id: tor._id, action: "publish" })}
+                                                >
+                                                    <Check className="mr-1 size-3.5" />
+                                                    เผยแพร่อีกครั้ง
+                                                </Button>
+                                            ) : activeTab === "draft" ? (
+                                                <Button
+                                                    size="sm"
+                                                    disabled={actioningId === tor._id}
+                                                    onClick={() => setConfirmAction({ id: tor._id, action: "publish" })}
+                                                >
+                                                    <Check className="mr-1 size-3.5" />
+                                                    เผยแพร่
+                                                </Button>
                                             ) : (
                                                 <Button
                                                     size="sm"
@@ -517,257 +719,64 @@ export default function AdminTorManagementPage() {
                                             </div>
                                         </div>
                                     )}
-
-                                    <div className="mt-3 space-y-2 border-t border-border pt-3">
-                                        {feedback.map((f) => {
-                                            const userInfo =
-                                                typeof f.userId === "object" ? f.userId : null;
-                                            return (
-                                                <FeedbackRow
-                                                    key={f._id}
-                                                    feedback={f}
-                                                    userInfo={userInfo}
-                                                    onResolve={resolveFeedback}
-                                                />
-                                            );
-                                        })}
-                                    </div>
                                 </li>
                             ))}
                         </ul>
-                    )
-                ) : tors.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">ไม่มีรายการ</p>
-                ) : (
-                    <ul className="space-y-3">
-                        {tors.map((tor) => (
-                            <li
-                                key={tor._id}
-                                className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)]"
-                            >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <p className="font-medium">{tor.title}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {tor.agency} · {tor.status}
-                                        </p>
-                                    </div>
-
-                                    <div className="flex gap-2">
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => startEdit(tor)}
-                                        >
-                                            <Pencil className="mr-1 size-3.5" />
-                                            แก้ไข
-                                        </Button>
-
-                                        {activeTab === "archived" ? (
-                                            <Button
-                                                size="sm"
-                                                disabled={actioningId === tor._id}
-                                                onClick={() => setConfirmAction({ id: tor._id, action: "publish" })}
-                                            >
-                                                <Check className="mr-1 size-3.5" />
-                                                เผยแพร่อีกครั้ง
-                                            </Button>
-                                        ) : activeTab === "draft" ? (
-                                            <Button
-                                                size="sm"
-                                                disabled={actioningId === tor._id}
-                                                onClick={() => setConfirmAction({ id: tor._id, action: "publish" })}
-                                            >
-                                                <Check className="mr-1 size-3.5" />
-                                                เผยแพร่
-                                            </Button>
-                                        ) : (
-                                            <Button
-                                                size="sm"
-                                                variant="destructive"
-                                                disabled={actioningId === tor._id}
-                                                onClick={() => setConfirmAction({ id: tor._id, action: "archive" })}
-                                            >
-                                                <Archive className="mr-1 size-3.5" />
-                                                เก็บถาวร
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {editingId === tor._id && (
-                                    <div className="mt-3 space-y-2 border-t border-border pt-3">
-                                        <Input
-                                            value={editDraft.title ?? ""}
-                                            onChange={(e) => setEditDraft((d) => ({ ...d, title: e.target.value }))}
-                                            placeholder="ชื่อโครงการ"
-                                        />
-                                        <textarea
-                                            value={editDraft.description ?? ""}
-                                            onChange={(e) =>
-                                                setEditDraft((d) => ({ ...d, description: e.target.value }))
-                                            }
-                                            placeholder="คำอธิบาย"
-                                            rows={2}
-                                            className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm"
-                                        />
-                                        <textarea
-                                            value={editDraft.detailSummary ?? ""}
-                                            onChange={(e) =>
-                                                setEditDraft((d) => ({ ...d, detailSummary: e.target.value }))
-                                            }
-                                            placeholder="รายละเอียดเพิ่มเติม"
-                                            rows={3}
-                                            className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm"
-                                        />
-                                        <Input
-                                            value={editDraft.agency ?? ""}
-                                            onChange={(e) => setEditDraft((d) => ({ ...d, agency: e.target.value }))}
-                                            placeholder="หน่วยงาน"
-                                        />
-
-                                        <select
-                                            value={editDraft.category ?? ""}
-                                            onChange={(e) =>
-                                                setEditDraft((d) => ({ ...d, category: e.target.value }))
-                                            }
-                                            className="h-9 w-full cursor-pointer rounded-md border border-input bg-card px-3 text-sm"
-                                        >
-                                            {CATEGORY_OPTIONS.map((opt) => (
-                                                <option key={opt} value={opt}>
-                                                    {categoryLabel(opt)}
-                                                </option>
-                                            ))}
-                                        </select>
-
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <Input
-                                                type="number"
-                                                value={editDraft.budgetAmount ?? ""}
-                                                onChange={(e) =>
-                                                    setEditDraft((d) => ({
-                                                        ...d,
-                                                        budgetAmount: Number(e.target.value),
-                                                    }))
-                                                }
-                                                placeholder="งบประมาณ"
-                                            />
-                                            <Input
-                                                type="number"
-                                                value={editDraft.tenderAmount ?? ""}
-                                                onChange={(e) =>
-                                                    setEditDraft((d) => ({
-                                                        ...d,
-                                                        tenderAmount: Number(e.target.value),
-                                                    }))
-                                                }
-                                                placeholder="วงเงินประมูล"
-                                            />
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <Input
-                                                type="number"
-                                                value={editDraft.fiscalYear ?? ""}
-                                                onChange={(e) =>
-                                                    setEditDraft((d) => ({
-                                                        ...d,
-                                                        fiscalYear: Number(e.target.value),
-                                                    }))
-                                                }
-                                                placeholder="ปีงบประมาณ"
-                                            />
-                                            <Input
-                                                value={editDraft.procurementMethod ?? ""}
-                                                onChange={(e) =>
-                                                    setEditDraft((d) => ({
-                                                        ...d,
-                                                        procurementMethod: e.target.value,
-                                                    }))
-                                                }
-                                                placeholder="วิธีจัดซื้อจัดจ้าง"
-                                            />
-                                        </div>
-
-                                        <Input
-                                            value={editDraft.sourceUrl ?? ""}
-                                            onChange={(e) =>
-                                                setEditDraft((d) => ({ ...d, sourceUrl: e.target.value }))
-                                            }
-                                            placeholder="ลิงก์แหล่งที่มา"
-                                        />
-
-                                        <div className="flex gap-2">
-                                            <Button
-                                                size="sm"
-                                                disabled={actioningId === tor._id}
-                                                onClick={() => saveEdit(tor._id)}
-                                            >
-                                                {actioningId === tor._id ? "กำลังบันทึก..." : "บันทึก"}
-                                            </Button>
-                                            <Button size="sm" variant="outline" onClick={cancelEdit}>
-                                                ยกเลิก
-                                            </Button>
-                                        </div>
-                                    </div>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </main>
-            {confirmAction && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-                    onClick={() => setConfirmAction(null)}
-                >
+                    )}
+                </main>
+                {confirmAction && (
                     <div
-                        className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]"
-                        onClick={(e) => e.stopPropagation()}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+                        onClick={() => setConfirmAction(null)}
                     >
-                        <h2 className="text-lg font-semibold">
-                            {confirmAction.action === "archive"
-                                ? "เก็บถาวร TOR นี้?"
-                                : activeTab === "draft"
-                                ? "เผยแพร่ TOR นี้?"
-                                : "เผยแพร่ TOR นี้อีกครั้ง?"}
-                        </h2>
+                        <div
+                            className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <h2 className="text-lg font-semibold">
+                                {confirmAction.action === "archive"
+                                    ? "เก็บถาวร TOR นี้?"
+                                    : activeTab === "draft"
+                                    ? "เผยแพร่ TOR นี้?"
+                                    : "เผยแพร่ TOR นี้อีกครั้ง?"}
+                            </h2>
 
-                        <p className="mt-2 text-sm text-muted-foreground">
-                            {confirmAction.action === "archive"
-                                ? "TOR นี้จะไม่แสดงในผลการค้นหาสาธารณะอีกต่อไป คุณสามารถเผยแพร่อีกครั้งได้ภายหลัง"
-                                : activeTab === "draft"
-                                ? "TOR นี้จะเปลี่ยนจากฉบับร่างเป็นเผยแพร่ และแสดงในผลการค้นหาสาธารณะ"
-                                : "TOR นี้จะกลับมาแสดงในผลการค้นหาสาธารณะอีกครั้ง"}
-                        </p>
+                            <p className="mt-2 text-sm text-muted-foreground">
+                                {confirmAction.action === "archive"
+                                    ? "TOR นี้จะไม่แสดงในผลการค้นหาสาธารณะอีกต่อไป คุณสามารถเผยแพร่อีกครั้งได้ภายหลัง"
+                                    : activeTab === "draft"
+                                    ? "TOR นี้จะเปลี่ยนจากฉบับร่างเป็นเผยแพร่ และแสดงในผลการค้นหาสาธารณะ"
+                                    : "TOR นี้จะกลับมาแสดงในผลการค้นหาสาธารณะอีกครั้ง"}
+                            </p>
 
-                        <div className="mt-6 flex justify-end gap-2">
-                            <Button variant="outline" onClick={() => setConfirmAction(null)}>
-                                ยกเลิก
-                            </Button>
-                            <Button
-                                variant={confirmAction.action === "archive" ? "destructive" : "default"}
-                                disabled={actioningId === confirmAction.id}
-                                onClick={async () => {
-                                    const { id, action } = confirmAction;
-                                    if (action === "archive") {
-                                        await handleArchive(id);
-                                    } else {
-                                        await handlePublish(id);
-                                    }
-                                    setConfirmAction(null);
-                                }}
-                            >
-                                {actioningId === confirmAction.id
-                                    ? "กำลังดำเนินการ..."
-                                    : confirmAction.action === "archive"
-                                    ? "เก็บถาวร"
-                                    : "เผยแพร่"}
-                            </Button>
+                            <div className="mt-6 flex justify-end gap-2">
+                                <Button variant="outline" onClick={() => setConfirmAction(null)}>
+                                    ยกเลิก
+                                </Button>
+                                <Button
+                                    variant={confirmAction.action === "archive" ? "destructive" : "default"}
+                                    disabled={actioningId === confirmAction.id}
+                                    onClick={async () => {
+                                        const { id, action } = confirmAction;
+                                        if (action === "archive") {
+                                            await handleArchive(id);
+                                        } else {
+                                            await handlePublish(id);
+                                        }
+                                        setConfirmAction(null);
+                                    }}
+                                >
+                                    {actioningId === confirmAction.id
+                                        ? "กำลังดำเนินการ..."
+                                        : confirmAction.action === "archive"
+                                        ? "เก็บถาวร"
+                                        : "เผยแพร่"}
+                                </Button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
         </div>
         
     );

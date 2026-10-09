@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { Button } from "@/components/ui/button";
+import { SiteHeader } from "../SiteHeader";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -211,140 +212,148 @@ export default function AdminSyncPage() {
         "h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30";
 
     return (
-        <div className="flex min-h-screen bg-background">
-            <DashboardSidebar subtitle="ผู้ดูแลระบบ" items={items} activeLabel="การเก็บรวบรวมข้อมูล" />
+        <div className="min-h-screen bg-background">
+            <SiteHeader />
 
-            <main className="flex-1 p-8">
-                <div className="mb-6 flex items-center justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-semibold tracking-tight">การเก็บรวบรวมข้อมูล</h1>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                            สถานะและประวัติการดึงข้อมูล TOR จากแหล่งข้อมูลภาครัฐ
-                        </p>
-                    </div>
-                    <Button variant="outline" onClick={refresh} disabled={isLoading}>
-                        <RefreshCw className={`mr-2 size-4 ${isLoading ? "animate-spin" : ""}`} />
-                        รีเฟรช
-                    </Button>
-                </div>
+            <div className="mx-auto flex max-w-7xl gap-6 px-4 py-8 sm:px-6">
+                <DashboardSidebar
+                    subtitle="ผู้ดูแลระบบ"
+                    items={items}
+                    activeLabel="การเก็บรวบรวมข้อมูล"
+                />
 
-                {error && (
-                    <div className="mb-6 rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
-                )}
-
-                <section className="mb-8 grid gap-4 md:grid-cols-2">
-                    {latest.length === 0 && !isLoading ? (
-                        <div className={`${card} text-sm text-muted-foreground`}>ยังไม่มีประวัติการเก็บข้อมูล</div>
-                    ) : (
-                        latest.map((log) => <SourceCard key={log.sourceId} log={log} />)
-                    )}
-                </section>
-
-                <section className={card}>
-                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                        <h2 className="text-sm font-semibold">ประวัติการทำงาน ({pagination.total.toLocaleString("th-TH")})</h2>
-                        <div className="flex gap-2">
-                            <select
-                                className={selectClass}
-                                value={source}
-                                onChange={(e) => changeFilter(() => setSource(e.target.value))}
-                            >
-                                <option value="">ทุกแหล่งข้อมูล</option>
-                                {Object.entries(SOURCE_LABELS).map(([value, label]) => (
-                                    <option key={value} value={value}>
-                                        {label}
-                                    </option>
-                                ))}
-                            </select>
-                            <select
-                                className={selectClass}
-                                value={status}
-                                onChange={(e) => changeFilter(() => setStatus(e.target.value))}
-                            >
-                                <option value="">ทุกสถานะ</option>
-                                {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                                    <option key={value} value={value}>
-                                        {label}
-                                    </option>
-                                ))}
-                            </select>
+                <main className="min-w-0 flex-1 space-y-6">
+                    <div className="mb-6 flex items-center justify-between gap-4">
+                        <div>
+                            <h1 className="text-2xl font-semibold tracking-tight">การเก็บรวบรวมข้อมูล</h1>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                สถานะและประวัติการดึงข้อมูล TOR จากแหล่งข้อมูลภาครัฐ
+                            </p>
                         </div>
+                        <Button variant="outline" onClick={refresh} disabled={isLoading}>
+                            <RefreshCw className={`mr-2 size-4 ${isLoading ? "animate-spin" : ""}`} />
+                            รีเฟรช
+                        </Button>
                     </div>
 
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                                    <th className="py-2 pr-4 font-medium">แหล่งข้อมูล</th>
-                                    <th className="py-2 pr-4 font-medium">สถานะ</th>
-                                    <th className="py-2 pr-4 font-medium">เริ่ม</th>
-                                    <th className="py-2 pr-4 font-medium">ระยะเวลา</th>
-                                    <th className="py-2 pr-4 text-right font-medium">อ่าน</th>
-                                    <th className="py-2 pr-4 text-right font-medium">เพิ่มใหม่</th>
-                                    <th className="py-2 pr-4 text-right font-medium">อัปเดต</th>
-                                    <th className="py-2 pr-4 text-right font-medium">ข้าม</th>
-                                    <th className="py-2 font-medium">ข้อผิดพลาด</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {logs.map((log) => (
-                                    <tr key={log.id} className="border-b border-border last:border-0">
-                                        <td className="py-3 pr-4">
-                                            <span className="font-medium">{SOURCE_LABELS[log.sourceId] ?? log.sourceId}</span>
-                                            <span className="block text-xs text-muted-foreground">
-                                                {TRIGGER_LABELS[log.trigger] ?? log.trigger}
-                                            </span>
-                                        </td>
-                                        <td className="py-3 pr-4">
-                                            <StatusBadge status={log.status} />
-                                        </td>
-                                        <td className="py-3 pr-4 whitespace-nowrap">{formatDateTime(log.startedAt)}</td>
-                                        <td className="py-3 pr-4 whitespace-nowrap">{formatDuration(log.durationMs)}</td>
-                                        <td className="py-3 pr-4 text-right">{log.recordsRead.toLocaleString("th-TH")}</td>
-                                        <td className="py-3 pr-4 text-right">{log.recordsInserted.toLocaleString("th-TH")}</td>
-                                        <td className="py-3 pr-4 text-right">{log.recordsUpdated.toLocaleString("th-TH")}</td>
-                                        <td className="py-3 pr-4 text-right">{log.recordsSkipped.toLocaleString("th-TH")}</td>
-                                        <td className="max-w-xs py-3 text-xs text-destructive">
-                                            {log.status === "failed" ? log.errorMessage || "ไม่มีรายละเอียด" : ""}
-                                        </td>
-                                    </tr>
-                                ))}
-                                {logs.length === 0 && !isLoading && (
-                                    <tr>
-                                        <td colSpan={9} className="py-8 text-center text-muted-foreground">
-                                            ไม่พบรายการ
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {pagination.totalPages > 1 && (
-                        <div className="mt-4 flex items-center justify-end gap-2 text-sm">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={page <= 1 || isLoading}
-                                onClick={() => goToPage(page - 1)}
-                            >
-                                ก่อนหน้า
-                            </Button>
-                            <span className="text-muted-foreground">
-                                หน้า {pagination.page} / {pagination.totalPages}
-                            </span>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={page >= pagination.totalPages || isLoading}
-                                onClick={() => goToPage(page + 1)}
-                            >
-                                ถัดไป
-                            </Button>
-                        </div>
+                    {error && (
+                        <div className="mb-6 rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
                     )}
-                </section>
-            </main>
+
+                    <section className="mb-8 grid gap-4 md:grid-cols-2">
+                        {latest.length === 0 && !isLoading ? (
+                            <div className={`${card} text-sm text-muted-foreground`}>ยังไม่มีประวัติการเก็บข้อมูล</div>
+                        ) : (
+                            latest.map((log) => <SourceCard key={log.sourceId} log={log} />)
+                        )}
+                    </section>
+
+                    <section className={card}>
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                            <h2 className="text-sm font-semibold">ประวัติการทำงาน ({pagination.total.toLocaleString("th-TH")})</h2>
+                            <div className="flex gap-2">
+                                <select
+                                    className={selectClass}
+                                    value={source}
+                                    onChange={(e) => changeFilter(() => setSource(e.target.value))}
+                                >
+                                    <option value="">ทุกแหล่งข้อมูล</option>
+                                    {Object.entries(SOURCE_LABELS).map(([value, label]) => (
+                                        <option key={value} value={value}>
+                                            {label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <select
+                                    className={selectClass}
+                                    value={status}
+                                    onChange={(e) => changeFilter(() => setStatus(e.target.value))}
+                                >
+                                    <option value="">ทุกสถานะ</option>
+                                    {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                                        <option key={value} value={value}>
+                                            {label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                                        <th className="py-2 pr-4 font-medium">แหล่งข้อมูล</th>
+                                        <th className="py-2 pr-4 font-medium">สถานะ</th>
+                                        <th className="py-2 pr-4 font-medium">เริ่ม</th>
+                                        <th className="py-2 pr-4 font-medium">ระยะเวลา</th>
+                                        <th className="py-2 pr-4 text-right font-medium">อ่าน</th>
+                                        <th className="py-2 pr-4 text-right font-medium">เพิ่มใหม่</th>
+                                        <th className="py-2 pr-4 text-right font-medium">อัปเดต</th>
+                                        <th className="py-2 pr-4 text-right font-medium">ข้าม</th>
+                                        <th className="py-2 font-medium">ข้อผิดพลาด</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {logs.map((log) => (
+                                        <tr key={log.id} className="border-b border-border last:border-0">
+                                            <td className="py-3 pr-4">
+                                                <span className="font-medium">{SOURCE_LABELS[log.sourceId] ?? log.sourceId}</span>
+                                                <span className="block text-xs text-muted-foreground">
+                                                    {TRIGGER_LABELS[log.trigger] ?? log.trigger}
+                                                </span>
+                                            </td>
+                                            <td className="py-3 pr-4">
+                                                <StatusBadge status={log.status} />
+                                            </td>
+                                            <td className="py-3 pr-4 whitespace-nowrap">{formatDateTime(log.startedAt)}</td>
+                                            <td className="py-3 pr-4 whitespace-nowrap">{formatDuration(log.durationMs)}</td>
+                                            <td className="py-3 pr-4 text-right">{log.recordsRead.toLocaleString("th-TH")}</td>
+                                            <td className="py-3 pr-4 text-right">{log.recordsInserted.toLocaleString("th-TH")}</td>
+                                            <td className="py-3 pr-4 text-right">{log.recordsUpdated.toLocaleString("th-TH")}</td>
+                                            <td className="py-3 pr-4 text-right">{log.recordsSkipped.toLocaleString("th-TH")}</td>
+                                            <td className="max-w-xs py-3 text-xs text-destructive">
+                                                {log.status === "failed" ? log.errorMessage || "ไม่มีรายละเอียด" : ""}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {logs.length === 0 && !isLoading && (
+                                        <tr>
+                                            <td colSpan={9} className="py-8 text-center text-muted-foreground">
+                                                ไม่พบรายการ
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {pagination.totalPages > 1 && (
+                            <div className="mt-4 flex items-center justify-end gap-2 text-sm">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={page <= 1 || isLoading}
+                                    onClick={() => goToPage(page - 1)}
+                                >
+                                    ก่อนหน้า
+                                </Button>
+                                <span className="text-muted-foreground">
+                                    หน้า {pagination.page} / {pagination.totalPages}
+                                </span>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={page >= pagination.totalPages || isLoading}
+                                    onClick={() => goToPage(page + 1)}
+                                >
+                                    ถัดไป
+                                </Button>
+                            </div>
+                        )}
+                    </section>
+                </main>
+            </div>
         </div>
     );
 }

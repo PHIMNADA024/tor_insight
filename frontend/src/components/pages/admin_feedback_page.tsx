@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { Button } from "@/components/ui/button";
+import { SiteHeader } from "../SiteHeader";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5050";
 
@@ -149,162 +150,166 @@ export default function AdminFeedbackPage() {
     }
 
     return (
-        <div className="flex min-h-screen bg-background">
-            <DashboardSidebar
-                subtitle="ผู้ดูแลระบบ"
-                items={items}
-                activeLabel="ข้อเสนอแนะ"
-            />
+        <div className="min-h-screen bg-background">
+            <SiteHeader />
 
-            <main className="flex-1 space-y-6 p-6">
-                <h1 className="text-xl font-semibold tracking-tight">
-                    จัดการข้อเสนอแนะ
-                </h1>
+            <div className="mx-auto flex max-w-7xl gap-6 px-4 py-8 sm:px-6">
+                <DashboardSidebar
+                    subtitle="ผู้ดูแลระบบ"
+                    items={items}
+                    activeLabel="ข้อเสนอแนะ"
+                />
 
-                <div className="flex gap-2 border-b border-border">
-                    {STATUS_TABS.map((tab) => (
-                        <button
-                            key={tab.value}
-                            onClick={() => {
-                                setIsLoading(true);
-                                setError(null);
-                                setActiveStatus(tab.value);
-                            }}
-                            className={`cursor-pointer border-b-2 px-3 pb-2 text-sm ${
-                                activeStatus === tab.value
-                                    ? "border-primary font-medium text-primary"
-                                    : "border-transparent text-muted-foreground hover:text-foreground"
-                            }`}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
+                <main className="min-w-0 flex-1 space-y-6">
+                    <h1 className="text-xl font-semibold tracking-tight">
+                        จัดการข้อเสนอแนะ
+                    </h1>
 
-                {error && <p className="text-sm text-destructive">{error}</p>}
+                    <div className="flex gap-2 border-b border-border">
+                        {STATUS_TABS.map((tab) => (
+                            <button
+                                key={tab.value}
+                                onClick={() => {
+                                    setIsLoading(true);
+                                    setError(null);
+                                    setActiveStatus(tab.value);
+                                }}
+                                className={`cursor-pointer border-b-2 px-3 pb-2 text-sm ${
+                                    activeStatus === tab.value
+                                        ? "border-primary font-medium text-primary"
+                                        : "border-transparent text-muted-foreground hover:text-foreground"
+                                }`}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
 
-                {isLoading ? (
-                    <p className="text-sm text-muted-foreground">กำลังโหลด...</p>
-                ) : items_.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">ไม่มีข้อเสนอแนะในหมวดนี้</p>
-                ) : (
-                    <ul className="space-y-3">
-                        {items_.map((item) => {
-                            const isExpanded = expandedId === item._id;
-                            const isResolved = item.status === "resolved";
-                            const userInfo =
-                                typeof item.userId === "object" ? item.userId : null;
+                    {error && <p className="text-sm text-destructive">{error}</p>}
 
-                            return (
-                                <li
-                                    key={item._id}
-                                    className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)]"
-                                >
-                                    <button
-                                        onClick={() => toggleExpand(item._id)}
-                                        className="flex w-full cursor-pointer items-start justify-between gap-3 text-left"
+                    {isLoading ? (
+                        <p className="text-sm text-muted-foreground">กำลังโหลด...</p>
+                    ) : items_.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">ไม่มีข้อเสนอแนะในหมวดนี้</p>
+                    ) : (
+                        <ul className="space-y-3">
+                            {items_.map((item) => {
+                                const isExpanded = expandedId === item._id;
+                                const isResolved = item.status === "resolved";
+                                const userInfo =
+                                    typeof item.userId === "object" ? item.userId : null;
+
+                                return (
+                                    <li
+                                        key={item._id}
+                                        className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)]"
                                     >
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-xs font-medium text-primary">
-                                                    {CATEGORY_LABELS[item.category] ?? item.category}
-                                                </span>
-                                                <span
-                                                    className={`rounded-md px-2 py-0.5 text-xs ${STATUS_BADGE[item.status]}`}
-                                                >
-                                                    {STATUS_TABS.find((t) => t.value === item.status)?.label}
-                                                </span>
+                                        <button
+                                            onClick={() => toggleExpand(item._id)}
+                                            className="flex w-full cursor-pointer items-start justify-between gap-3 text-left"
+                                        >
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-medium text-primary">
+                                                        {CATEGORY_LABELS[item.category] ?? item.category}
+                                                    </span>
+                                                    <span
+                                                        className={`rounded-md px-2 py-0.5 text-xs ${STATUS_BADGE[item.status]}`}
+                                                    >
+                                                        {STATUS_TABS.find((t) => t.value === item.status)?.label}
+                                                    </span>
+                                                </div>
+
+                                                <p className="mt-1 break-words text-sm font-medium">
+                                                    {item.description}
+                                                </p>
+
+                                                {item.torReference && (
+                                                    <p className="mt-0.5 break-words text-xs text-muted-foreground">
+                                                        เกี่ยวข้องกับ: {item.torReference}
+                                                    </p>
+                                                )}
+
+                                                {userInfo && (
+                                                    <p className="mt-1 text-xs text-muted-foreground">
+                                                        จาก: {userInfo.name} ({userInfo.email})
+                                                    </p>
+                                                )}
                                             </div>
 
-                                            <p className="mt-1 text-sm font-medium">
-                                                {item.description}
-                                            </p>
+                                            <div className="flex items-center gap-2">
+                                                <span className="whitespace-nowrap text-xs text-muted-foreground">
+                                                    {new Date(item.createdAt).toLocaleDateString("th-TH")}
+                                                </span>
+                                                {isExpanded ? (
+                                                    <ChevronUp className="size-4 text-muted-foreground" />
+                                                ) : (
+                                                    <ChevronDown className="size-4 text-muted-foreground" />
+                                                )}
+                                            </div>
+                                        </button>
 
-                                            {item.torReference && (
-                                                <p className="mt-0.5 text-xs text-muted-foreground">
-                                                    เกี่ยวข้องกับ: {item.torReference}
-                                                </p>
-                                            )}
-
-                                            {userInfo && (
-                                                <p className="mt-1 text-xs text-muted-foreground">
-                                                    จาก: {userInfo.name} ({userInfo.email})
-                                                </p>
-                                            )}
-                                        </div>
-
-                                        <div className="flex items-center gap-2">
-                                            <span className="whitespace-nowrap text-xs text-muted-foreground">
-                                                {new Date(item.createdAt).toLocaleDateString("th-TH")}
-                                            </span>
-                                            {isExpanded ? (
-                                                <ChevronUp className="size-4 text-muted-foreground" />
-                                            ) : (
-                                                <ChevronDown className="size-4 text-muted-foreground" />
-                                            )}
-                                        </div>
-                                    </button>
-
-                                    {isExpanded && (
-                                        <div className="mt-4 space-y-3 border-t border-border pt-4">
-                                            {item.adminResponse && (
-                                                <div className="rounded-md bg-accent p-3">
-                                                    <p className="text-xs font-medium text-accent-foreground">
-                                                        {isResolved ? "คำตอบที่ส่งให้ผู้ใช้แล้ว" : "คำตอบก่อนหน้า"}
-                                                    </p>
-                                                    <p className="mt-1 text-sm text-accent-foreground">
-                                                        {item.adminResponse}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {!isResolved && (
-                                                <>
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-xs text-muted-foreground">
-                                                            คำตอบถึงผู้ใช้ (จะถูกส่งเป็นการแจ้งเตือนในแอปและอีเมล)
-                                                        </label>
-                                                        <textarea
-                                                            rows={3}
-                                                            className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm"
-                                                            placeholder="พิมพ์คำตอบที่นี่..."
-                                                            value={responseDrafts[item._id] ?? ""}
-                                                            onChange={(e) =>
-                                                                setResponseDrafts((prev) => ({
-                                                                    ...prev,
-                                                                    [item._id]: e.target.value,
-                                                                }))
-                                                            }
-                                                        />
+                                        {isExpanded && (
+                                            <div className="mt-4 space-y-3 border-t border-border pt-4">
+                                                {item.adminResponse && (
+                                                    <div className="rounded-md bg-accent p-3">
+                                                        <p className="text-xs font-medium text-accent-foreground">
+                                                            {isResolved ? "คำตอบที่ส่งให้ผู้ใช้แล้ว" : "คำตอบก่อนหน้า"}
+                                                        </p>
+                                                        <p className="mt-1 text-sm text-accent-foreground">
+                                                            {item.adminResponse}
+                                                        </p>
                                                     </div>
+                                                )}
 
-                                                    <div className="flex gap-2">
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            disabled={savingId === item._id}
-                                                            onClick={() => handleUpdate(item._id, "reviewed")}
-                                                        >
-                                                            ทำเครื่องหมายว่ากำลังดำเนินการ
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            disabled={savingId === item._id}
-                                                            onClick={() => handleUpdate(item._id, "resolved")}
-                                                        >
-                                                            {savingId === item._id ? "กำลังบันทึก..." : "แก้ไขและปิดเรื่อง"}
-                                                        </Button>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-                                    )}
-                                </li>
-                            );
-                        })}
-                    </ul>
-                )}
-            </main>
+                                                {!isResolved && (
+                                                    <>
+                                                        <div className="space-y-1.5">
+                                                            <label className="text-xs text-muted-foreground">
+                                                                คำตอบถึงผู้ใช้ (จะถูกส่งเป็นการแจ้งเตือนในแอปและอีเมล)
+                                                            </label>
+                                                            <textarea
+                                                                rows={3}
+                                                                className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm"
+                                                                placeholder="พิมพ์คำตอบที่นี่..."
+                                                                value={responseDrafts[item._id] ?? ""}
+                                                                onChange={(e) =>
+                                                                    setResponseDrafts((prev) => ({
+                                                                        ...prev,
+                                                                        [item._id]: e.target.value,
+                                                                    }))
+                                                                }
+                                                            />
+                                                        </div>
+
+                                                        <div className="flex gap-2">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                disabled={savingId === item._id}
+                                                                onClick={() => handleUpdate(item._id, "reviewed")}
+                                                            >
+                                                                ทำเครื่องหมายว่ากำลังดำเนินการ
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                disabled={savingId === item._id}
+                                                                onClick={() => handleUpdate(item._id, "resolved")}
+                                                            >
+                                                                {savingId === item._id ? "กำลังบันทึก..." : "แก้ไขและปิดเรื่อง"}
+                                                            </Button>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
+                </main>
+            </div>
         </div>
     );
 }

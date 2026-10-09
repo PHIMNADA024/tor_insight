@@ -6,11 +6,6 @@ import {
     AlertCircle,
     Inbox,
     RotateCw,
-    LayoutDashboard,
-    Search,
-    Bookmark,
-    Bell,
-    Info,
 } from "lucide-react";
 import {
     Bar,
@@ -23,7 +18,7 @@ import {
     XAxis,
     YAxis,
 } from "recharts";
-import { DashboardSidebar } from "@/components/DashboardSidebar";
+import { SiteHeader } from "@/components/SiteHeader";
 import { StatCard } from "@/components/StatCard";
 import { categoryLabel } from "@/lib/categories";
 
@@ -148,33 +143,6 @@ const chartColors = [
     "var(--chart-3)",
     "var(--chart-4)",
     "var(--chart-5)",
-];
-
-const items = [
-    {
-        label: "แดชบอร์ด",
-        href: "/dashboard",
-        icon: LayoutDashboard,
-    },
-    {
-        label: "ค้นหา TOR",
-        href: "/search",
-        icon: Search,
-    },
-    {
-        label: "การค้นหาที่บันทึกไว้",
-        icon: Bookmark,
-    },
-    {
-        label: "การแจ้งเตือน",
-        href: "/notifications",
-        icon: Bell,
-    },
-    {
-        label: "เกี่ยวกับเรา",
-        href: "/about",
-        icon: Info,
-    },
 ];
 
 function Donut({
@@ -327,14 +295,10 @@ export default function DashboardPage() {
               }));
 
     return (
-        <div className="flex min-h-screen bg-background">
-            <DashboardSidebar
-                subtitle="การวิเคราะห์"
-                items={items}
-                activeLabel="แดชบอร์ด"
-            />
+        <div className="min-h-screen bg-background">
+            <SiteHeader />
 
-            <main className="flex-1 space-y-6 p-6">
+            <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <h1 className="text-xl font-semibold tracking-tight">
                         ภาพรวมแดชบอร์ดราคา

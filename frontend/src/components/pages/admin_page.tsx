@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { StatCard } from "@/components/StatCard";
+import { SiteHeader } from "@/components/SiteHeader";
 
 const items = [
     {
@@ -103,198 +104,204 @@ const jobs = [
 
 export default function AdminPage() {
     return (
-        <div className="flex min-h-screen bg-background">
-            <DashboardSidebar
-                subtitle="ผู้ดูแลระบบ"
-                items={items}
-                activeLabel="ภาพรวม"
-            />
+        <div className="min-h-screen bg-background">
+            <SiteHeader />
 
-            <main className="flex-1 space-y-6 p-6">
-                <h1 className="text-xl font-semibold tracking-tight">
-                    ภาพรวมผู้ดูแลระบบ
-                </h1>
+            <div className="mx-auto flex max-w-7xl gap-6 px-4 py-8 sm:px-6">
+                <DashboardSidebar
+                    subtitle="ผู้ดูแลระบบ"
+                    items={items}
+                    activeLabel="ภาพรวม"
+                />
 
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <StatCard
-                        label="จำนวน TOR ทั้งหมด"
-                        value="351"
-                        delta="+12 รายการสัปดาห์นี้"
-                    />
+                <main className="min-w-0 flex-1 space-y-6">
+                    <h1 className="text-xl font-semibold tracking-tight">
+                        ภาพรวมผู้ดูแลระบบ
+                    </h1>
 
-                    <StatCard
-                        label="เผยแพร่แล้ว"
-                        value="289"
-                        delta="+21% เดือนนี้"
-                    />
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <StatCard
+                            label="จำนวน TOR ทั้งหมด"
+                            value="351"
+                            delta="+12 รายการสัปดาห์นี้"
+                        />
 
-                    <StatCard
-                        label="รอตรวจสอบ"
-                        value="24"
-                        delta="-7% เดือนนี้"
-                        tone="down"
-                    />
+                        <StatCard
+                            label="เผยแพร่แล้ว"
+                            value="289"
+                            delta="+21% เดือนนี้"
+                        />
 
-                    <StatCard
-                        label="ไม่ผ่าน"
-                        value="38"
-                        delta="+11% เดือนนี้"
-                        tone="down"
-                    />
-                </div>
+                        <StatCard
+                            label="รอตรวจสอบ"
+                            value="24"
+                            delta="-7% เดือนนี้"
+                            tone="down"
+                        />
 
-                <div className="grid gap-4 lg:grid-cols-2">
-                    <section className="rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-                        <h2 className="text-sm font-semibold">
-                            ภาพรวมสถานะ TOR
-                        </h2>
+                        <StatCard
+                            label="ไม่ผ่าน"
+                            value="38"
+                            delta="+11% เดือนนี้"
+                            tone="down"
+                        />
+                    </div>
 
-                        <div className="mt-2 flex items-center gap-4">
-                            <div className="h-44 flex-1">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <PieChart>
-                                        <Pie
-                                            data={statusData}
-                                            dataKey="value"
-                                            innerRadius={45}
-                                            outerRadius={70}
-                                            paddingAngle={2}
+                    <div className="grid gap-4 lg:grid-cols-2">
+                        <section className="rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+                            <h2 className="text-sm font-semibold">
+                                ภาพรวมสถานะ TOR
+                            </h2>
+
+                            <div className="mt-2 flex items-center gap-4">
+                                <div className="h-44 flex-1">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={statusData}
+                                                dataKey="value"
+                                                innerRadius={45}
+                                                outerRadius={70}
+                                                paddingAngle={2}
+                                            >
+                                                {statusData.map((d) => (
+                                                    <Cell
+                                                        key={d.name}
+                                                        fill={d.color}
+                                                    />
+                                                ))}
+                                            </Pie>
+
+                                            <Tooltip />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+
+                                <ul className="w-40 space-y-1.5 text-xs">
+                                    {statusData.map((d) => (
+                                        <li
+                                            key={d.name}
+                                            className="flex items-center justify-between gap-2"
                                         >
-                                            {statusData.map((d) => (
-                                                <Cell
-                                                    key={d.name}
-                                                    fill={d.color}
+                                            <span className="flex items-center gap-1.5 text-muted-foreground">
+                                                <span
+                                                    className="size-2 rounded-full"
+                                                    style={{ background: d.color }}
                                                 />
-                                            ))}
-                                        </Pie>
+                                                {d.name}
+                                            </span>
 
-                                        <Tooltip />
-                                    </PieChart>
-                                </ResponsiveContainer>
+                                            <span className="font-medium">
+                                                {d.value}%
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
                             </div>
+                        </section>
 
-                            <ul className="w-40 space-y-1.5 text-xs">
-                                {statusData.map((d) => (
+                        <section className="rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+                            <h2 className="mb-3 text-sm font-semibold">
+                                ข้อเสนอแนะล่าสุด
+                            </h2>
+
+                            <ul className="space-y-3">
+                                {feedback.map((f) => (
                                     <li
-                                        key={d.name}
-                                        className="flex items-center justify-between gap-2"
+                                        key={f.title}
+                                        className="flex items-start justify-between gap-3"
                                     >
-                                        <span className="flex items-center gap-1.5 text-muted-foreground">
-                                            <span
-                                                className="size-2 rounded-full"
-                                                style={{ background: d.color }}
-                                            />
-                                            {d.name}
+                                        <span>
+                                            <span className="block text-sm font-medium">
+                                                {f.title}
+                                            </span>
+
+                                            <span className="block text-xs text-muted-foreground">
+                                                {f.sub}
+                                            </span>
                                         </span>
 
-                                        <span className="font-medium">
-                                            {d.value}%
+                                        <span className="whitespace-nowrap text-xs text-muted-foreground">
+                                            {f.date}
                                         </span>
                                     </li>
                                 ))}
                             </ul>
-                        </div>
-                    </section>
+
+                            <button
+                                type="button"
+                                className="mt-4 cursor-pointer text-xs text-primary hover:underline"
+                            >
+                                ดูข้อเสนอแนะทั้งหมด →
+                            </button>
+                        </section>
+                    </div>
 
                     <section className="rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
                         <h2 className="mb-3 text-sm font-semibold">
-                            ข้อเสนอแนะล่าสุด
+                            งานเก็บรวบรวมข้อมูลล่าสุด
                         </h2>
 
-                        <ul className="space-y-3">
-                            {feedback.map((f) => (
-                                <li
-                                    key={f.title}
-                                    className="flex items-start justify-between gap-3"
-                                >
-                                    <span>
-                                        <span className="block text-sm font-medium">
-                                            {f.title}
-                                        </span>
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[640px] text-sm">
+                                <thead className="text-left text-xs text-muted-foreground">
+                                    <tr>
+                                        <th className="pb-2 font-medium">
+                                            แหล่งข้อมูล
+                                        </th>
 
-                                        <span className="block text-xs text-muted-foreground">
-                                            {f.sub}
-                                        </span>
-                                    </span>
+                                        <th className="pb-2 font-medium">
+                                            สถานะ
+                                        </th>
 
-                                    <span className="whitespace-nowrap text-xs text-muted-foreground">
-                                        {f.date}
-                                    </span>
-                                </li>
-                            ))}
-                        </ul>
+                                        <th className="pb-2 font-medium">
+                                            จำนวนรายการ
+                                        </th>
+
+                                        <th className="pb-2 font-medium">
+                                            รันล่าสุด
+                                        </th>
+                                    </tr>
+                                </thead>
+
+                                <tbody>
+                                    {jobs.map((j) => (
+                                        <tr
+                                            key={j.source}
+                                            className="border-t border-border"
+                                        >
+                                            <td className="py-2.5">
+                                                {j.source}
+                                            </td>
+
+                                            <td className="py-2.5">
+                                                <span className="rounded-md bg-success/15 px-2 py-0.5 text-xs text-success">
+                                                    สำเร็จ
+                                                </span>
+                                            </td>
+
+                                            <td className="py-2.5 text-muted-foreground">
+                                                {j.records}
+                                            </td>
+
+                                            <td className="py-2.5 text-muted-foreground">
+                                                {j.last}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
 
                         <button
                             type="button"
-                            className="mt-4 cursor-pointer text-xs text-primary hover:underline"
+                            className="mt-3 cursor-pointer text-xs text-primary hover:underline"
                         >
-                            ดูข้อเสนอแนะทั้งหมด →
+                            ดูงานทั้งหมด →
                         </button>
                     </section>
-                </div>
-
-                <section className="rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-                    <h2 className="mb-3 text-sm font-semibold">
-                        งานเก็บรวบรวมข้อมูลล่าสุด
-                    </h2>
-
-                    <table className="w-full text-sm">
-                        <thead className="text-left text-xs text-muted-foreground">
-                            <tr>
-                                <th className="pb-2 font-medium">
-                                    แหล่งข้อมูล
-                                </th>
-
-                                <th className="pb-2 font-medium">
-                                    สถานะ
-                                </th>
-
-                                <th className="pb-2 font-medium">
-                                    จำนวนรายการ
-                                </th>
-
-                                <th className="pb-2 font-medium">
-                                    รันล่าสุด
-                                </th>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            {jobs.map((j) => (
-                                <tr
-                                    key={j.source}
-                                    className="border-t border-border"
-                                >
-                                    <td className="py-2.5">
-                                        {j.source}
-                                    </td>
-
-                                    <td className="py-2.5">
-                                        <span className="rounded-md bg-success/15 px-2 py-0.5 text-xs text-success">
-                                            สำเร็จ
-                                        </span>
-                                    </td>
-
-                                    <td className="py-2.5 text-muted-foreground">
-                                        {j.records}
-                                    </td>
-
-                                    <td className="py-2.5 text-muted-foreground">
-                                        {j.last}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-
-                    <button
-                        type="button"
-                        className="mt-3 cursor-pointer text-xs text-primary hover:underline"
-                    >
-                        ดูงานทั้งหมด →
-                    </button>
-                </section>
-            </main>
+                </main>
+            </div>
         </div>
     );
 }

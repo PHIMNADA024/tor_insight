@@ -15,6 +15,7 @@ import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { SiteHeader } from "../SiteHeader";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5050";
 
@@ -164,161 +165,165 @@ export default function AdminUsersPage() {
     }
 
     return (
-        <div className="flex min-h-screen bg-background">
-            <DashboardSidebar
-                subtitle="ผู้ดูแลระบบ"
-                items={items}
-                activeLabel="ผู้ใช้งาน"
-            />
+        <div className="min-h-screen bg-background">
+            <SiteHeader />
 
-            <main className="flex-1 space-y-6 p-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h1 className="text-xl font-semibold tracking-tight">
-                        จัดการผู้ใช้งาน
-                    </h1>
+            <div className="mx-auto flex max-w-7xl gap-6 px-4 py-8 sm:px-6">
+                <DashboardSidebar
+                    subtitle="ผู้ดูแลระบบ"
+                    items={items}
+                    activeLabel="ผู้ใช้งาน"
+                />
 
-                    <form onSubmit={handleSearchSubmit} className="flex gap-2">
-                        <Input
-                            placeholder="ค้นหาด้วยชื่อหรืออีเมล"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            className="h-9 w-64"
-                        />
-                        <Button type="submit" variant="outline" size="sm">
-                            ค้นหา
-                        </Button>
-                    </form>
-                </div>
+                <main className="min-w-0 flex-1 space-y-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h1 className="text-xl font-semibold tracking-tight">
+                            จัดการผู้ใช้งาน
+                        </h1>
 
-                {error && <p className="text-sm text-destructive">{error}</p>}
-
-                {isLoading ? (
-                    <p className="text-sm text-muted-foreground">กำลังโหลด...</p>
-                ) : users.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">ไม่พบผู้ใช้งาน</p>
-                ) : (
-                    <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-[var(--shadow-card)]">
-                        <table className="w-full text-sm">
-                            <thead className="border-b border-border text-left text-xs text-muted-foreground">
-                                <tr>
-                                    <th className="p-3 font-medium">ชื่อ</th>
-                                    <th className="p-3 font-medium">อีเมล</th>
-                                    <th className="p-3 font-medium">บทบาท</th>
-                                    <th className="p-3 font-medium">สถานะ</th>
-                                    <th className="p-3 font-medium">เข้าสู่ระบบล่าสุด</th>
-                                    <th className="p-3 font-medium text-right">การดำเนินการ</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {users.map((user) => {
-                                    const isSelf = user._id === currentUser?.id; // NEW
-
-                                    return (
-                                        <tr key={user._id} className="border-t border-border">
-                                            <td className="p-3">
-                                                {user.name}
-                                                {isSelf && (
-                                                    <span className="ml-2 text-xs text-muted-foreground">
-                                                        (คุณ)
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="p-3 text-muted-foreground">{user.email}</td>
-                                            <td className="p-3">
-                                                {ROLE_LABELS[user.role] ?? user.role}
-                                            </td>
-                                            <td className="p-3">
-                                                <span
-                                                    className={`rounded-md px-2 py-0.5 text-xs ${
-                                                        user.status === "active"
-                                                            ? "bg-success/15 text-success"
-                                                            : "bg-destructive/15 text-destructive"
-                                                    }`}
-                                                >
-                                                    {user.status === "active" ? "ใช้งานอยู่" : "ถูกระงับ"}
-                                                </span>
-                                            </td>
-                                            <td className="p-3 text-muted-foreground">
-                                                {user.lastLoginAt
-                                                    ? new Date(user.lastLoginAt).toLocaleDateString("th-TH")
-                                                    : "ไม่เคยเข้าสู่ระบบ"}
-                                            </td>
-                                            <td className="p-3">
-                                                {isSelf ? (
-                                                    <span className="block text-right text-xs text-muted-foreground">
-                                                        ไม่สามารถดำเนินการกับบัญชีตัวเอง
-                                                    </span>
-                                                ) : (
-                                                    <div className="flex justify-end gap-2">
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            disabled={actioningId === user._id}
-                                                            onClick={() => handleToggleStatus(user)}
-                                                        >
-                                                            {user.status === "active" ? (
-                                                                <>
-                                                                    <Ban className="mr-1 size-3.5" />
-                                                                    ระงับ
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <CheckCircle2 className="mr-1 size-3.5" />
-                                                                    เปิดใช้งาน
-                                                                </>
-                                                            )}
-                                                        </Button>
-
-                                                        <Button
-                                                            size="sm"
-                                                            variant="destructive"
-                                                            disabled={actioningId === user._id}
-                                                            onClick={() => setConfirmDeleteId(user._id)}
-                                                        >
-                                                            <Trash2 className="mr-1 size-3.5" />
-                                                            ลบ
-                                                        </Button>
-                                                    </div>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                        <form onSubmit={handleSearchSubmit} className="flex gap-2">
+                            <Input
+                                placeholder="ค้นหาด้วยชื่อหรืออีเมล"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="h-9 w-64"
+                            />
+                            <Button type="submit" variant="outline" size="sm">
+                                ค้นหา
+                            </Button>
+                        </form>
                     </div>
-                )}
-            </main>
 
-            {confirmDeleteId && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-                    onClick={() => setConfirmDeleteId(null)}
-                >
+                    {error && <p className="text-sm text-destructive">{error}</p>}
+
+                    {isLoading ? (
+                        <p className="text-sm text-muted-foreground">กำลังโหลด...</p>
+                    ) : users.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">ไม่พบผู้ใช้งาน</p>
+                    ) : (
+                        <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-[var(--shadow-card)]">
+                            <table className="w-full text-sm">
+                                <thead className="border-b border-border text-left text-xs text-muted-foreground">
+                                    <tr>
+                                        <th className="p-3 font-medium">ชื่อ</th>
+                                        <th className="p-3 font-medium">อีเมล</th>
+                                        <th className="p-3 font-medium">บทบาท</th>
+                                        <th className="p-3 font-medium">สถานะ</th>
+                                        <th className="p-3 font-medium">เข้าสู่ระบบล่าสุด</th>
+                                        <th className="p-3 font-medium text-right">การดำเนินการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {users.map((user) => {
+                                        const isSelf = user._id === currentUser?.id; // NEW
+
+                                        return (
+                                            <tr key={user._id} className="border-t border-border">
+                                                <td className="p-3">
+                                                    {user.name}
+                                                    {isSelf && (
+                                                        <span className="ml-2 text-xs text-muted-foreground">
+                                                            (คุณ)
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="p-3 text-muted-foreground">{user.email}</td>
+                                                <td className="p-3">
+                                                    {ROLE_LABELS[user.role] ?? user.role}
+                                                </td>
+                                                <td className="p-3">
+                                                    <span
+                                                        className={`rounded-md px-2 py-0.5 text-xs ${
+                                                            user.status === "active"
+                                                                ? "bg-success/15 text-success"
+                                                                : "bg-destructive/15 text-destructive"
+                                                        }`}
+                                                    >
+                                                        {user.status === "active" ? "ใช้งานอยู่" : "ถูกระงับ"}
+                                                    </span>
+                                                </td>
+                                                <td className="p-3 text-muted-foreground">
+                                                    {user.lastLoginAt
+                                                        ? new Date(user.lastLoginAt).toLocaleDateString("th-TH")
+                                                        : "ไม่เคยเข้าสู่ระบบ"}
+                                                </td>
+                                                <td className="p-3">
+                                                    {isSelf ? (
+                                                        <span className="block text-right text-xs text-muted-foreground">
+                                                            ไม่สามารถดำเนินการกับบัญชีตัวเอง
+                                                        </span>
+                                                    ) : (
+                                                        <div className="flex justify-end gap-2">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                disabled={actioningId === user._id}
+                                                                onClick={() => handleToggleStatus(user)}
+                                                            >
+                                                                {user.status === "active" ? (
+                                                                    <>
+                                                                        <Ban className="mr-1 size-3.5" />
+                                                                        ระงับ
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <CheckCircle2 className="mr-1 size-3.5" />
+                                                                        เปิดใช้งาน
+                                                                    </>
+                                                                )}
+                                                            </Button>
+
+                                                            <Button
+                                                                size="sm"
+                                                                variant="destructive"
+                                                                disabled={actioningId === user._id}
+                                                                onClick={() => setConfirmDeleteId(user._id)}
+                                                            >
+                                                                <Trash2 className="mr-1 size-3.5" />
+                                                                ลบ
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </main>
+
+                {confirmDeleteId && (
                     <div
-                        className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]"
-                        onClick={(e) => e.stopPropagation()}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+                        onClick={() => setConfirmDeleteId(null)}
                     >
-                        <h2 className="text-lg font-semibold">ลบผู้ใช้งาน?</h2>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                            การลบผู้ใช้งานนี้ไม่สามารถย้อนกลับได้ ข้อมูลบัญชีทั้งหมดจะถูกลบถาวร
-                        </p>
+                        <div
+                            className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <h2 className="text-lg font-semibold">ลบผู้ใช้งาน?</h2>
+                            <p className="mt-2 text-sm text-muted-foreground">
+                                การลบผู้ใช้งานนี้ไม่สามารถย้อนกลับได้ ข้อมูลบัญชีทั้งหมดจะถูกลบถาวร
+                            </p>
 
-                        <div className="mt-6 flex justify-end gap-2">
-                            <Button variant="outline" onClick={() => setConfirmDeleteId(null)}>
-                                ยกเลิก
-                            </Button>
-                            <Button
-                                variant="destructive"
-                                disabled={actioningId === confirmDeleteId}
-                                onClick={() => handleDelete(confirmDeleteId)}
-                            >
-                                {actioningId === confirmDeleteId ? "กำลังลบ..." : "ลบถาวร"}
-                            </Button>
+                            <div className="mt-6 flex justify-end gap-2">
+                                <Button variant="outline" onClick={() => setConfirmDeleteId(null)}>
+                                    ยกเลิก
+                                </Button>
+                                <Button
+                                    variant="destructive"
+                                    disabled={actioningId === confirmDeleteId}
+                                    onClick={() => handleDelete(confirmDeleteId)}
+                                >
+                                    {actioningId === confirmDeleteId ? "กำลังลบ..." : "ลบถาวร"}
+                                </Button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
         </div>
     );
 }
