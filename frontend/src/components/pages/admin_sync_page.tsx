@@ -11,6 +11,7 @@ import {
     CheckCircle2,
     XCircle,
     Loader2,
+    Play
 } from "lucide-react";
 import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,8 @@ const items = [
 
 const SOURCE_LABELS: Record<string, string> = {
     bma: "BMA Open Contracting",
-    egp: "e-GP กรมบัญชีกลาง",
+    egp: "e-GP กรุงเทพมหานคร", // Bangkok e-GP (egp2.bangkok.go.th)
+    gprocurement: "e-GP กรมบัญชีกลาง", // national e-GP (gprocurement.go.th)
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -97,6 +99,19 @@ function formatDuration(ms: number | null): string {
     if (ms == null) return "-";
     if (ms < 60_000) return `${(ms / 1000).toFixed(1)} วินาที`;
     return `${Math.round(ms / 60_000)} นาที`;
+}
+
+type Notice = { ok: boolean; text: string };
+
+/** Turns the trigger endpoint's status code into a message for the admin. */
+function triggerNotice(status: number): Notice {
+    // 202: e-GP/gprocurement started in the background
+    if (status === 202) return { ok: true, text: "เริ่มเก็บข้อมูลแล้ว ผลลัพธ์จะแสดงในประวัติการทำงาน" }; // "Started, result will show in the history"
+    // 200: BMA waits until it is done
+    if (status === 200) return { ok: true, text: "เก็บข้อมูลเสร็จแล้ว" }; // "Collection finished"
+    if (status === 409) return { ok: false, text: "แหล่งข้อมูลนี้กำลังเก็บข้อมูลอยู่แล้ว" }; // "This source is already running"
+    if (status === 401 || status === 403) return { ok: false, text: "ไม่มีสิทธิ์เริ่มการเก็บข้อมูล" }; // "Not allowed"
+    return { ok: false, text: `เริ่มเก็บข้อมูลไม่สำเร็จ (HTTP ${status})` }; // "Failed to start"
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -208,6 +223,36 @@ export default function AdminSyncPage() {
         setReloadKey((k) => k + 1);
     }
 
+        const [triggerSource, setTriggerSource] = useState("bma");
+    const [isTriggering, setIsTriggering] = useState(false);
+    const [notice, setNotice] = useState<Notice | null>(null);
+
+    /** Starts a manual sync for the chosen source (#18). */
+    async function triggerSync() {
+        setIsTriggering(true);
+        setNotice(null);
+        try {
+            const res = await fetch(`${API_URL}/api/admin/sync/${triggerSource}`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${getToken()}` },
+            });
+            setNotice(triggerNotice(res.status));
+            refresh();
+        } catch {
+            setNotice({ ok: false, text: "เริ่มเก็บข้อมูลไม่สำเร็จ" }); // "Failed to start"
+        } finally {
+            setIsTriggering(false);
+        }
+    }
+
+    // While a run is in progress, reload every 10 s so its status updates by itself.
+    const hasRunning = latest.some((log) => log.status === "in_progress");
+    useEffect(() => {
+        if (!hasRunning) return;
+        const id = setInterval(() => setReloadKey((k) => k + 1), 10_000);
+        return () => clearInterval(id);
+    }, [hasRunning]);
+
     const selectClass =
         "h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30";
 
@@ -230,17 +275,48 @@ export default function AdminSyncPage() {
                                 สถานะและประวัติการดึงข้อมูล TOR จากแหล่งข้อมูลภาครัฐ
                             </p>
                         </div>
-                        <Button variant="outline" onClick={refresh} disabled={isLoading}>
-                            <RefreshCw className={`mr-2 size-4 ${isLoading ? "animate-spin" : ""}`} />
-                            รีเฟรช
-                        </Button>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <select
+                                className={selectClass}
+                                value={triggerSource}
+                                onChange={(e) => setTriggerSource(e.target.value)}
+                                disabled={isTriggering}
+                            >
+                                {Object.entries(SOURCE_LABELS).map(([value, label]) => (
+                                    <option key={value} value={value}>
+                                        {label}
+                                    </option>
+                                ))}
+                            </select>
+                            <Button onClick={triggerSync} disabled={isTriggering}>
+                                {isTriggering ? (
+                                    <Loader2 className="mr-2 size-4 animate-spin" />
+                                ) : (
+                                    <Play className="mr-2 size-4" />
+                                )}
+                                เริ่มเก็บข้อมูล {/* "Start collection" */}
+                            </Button>
+                            <Button variant="outline" onClick={refresh} disabled={isLoading}>
+                                <RefreshCw className={`mr-2 size-4 ${isLoading ? "animate-spin" : ""}`} />
+                                รีเฟรช
+                            </Button>
+                        </div>
                     </div>
 
                     {error && (
                         <div className="mb-6 rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
                     )}
+                    {notice && (
+                        <div
+                            className={`mb-6 rounded-lg px-4 py-3 text-sm ${
+                                notice.ok ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
+                            }`}
+                        >
+                            {notice.text}
+                        </div>
+                    )}
 
-                    <section className="mb-8 grid gap-4 md:grid-cols-2">
+                    <section className="mb-8 grid gap-4 md:grid-cols-3">
                         {latest.length === 0 && !isLoading ? (
                             <div className={`${card} text-sm text-muted-foreground`}>ยังไม่มีประวัติการเก็บข้อมูล</div>
                         ) : (
