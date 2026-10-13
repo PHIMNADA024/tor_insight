@@ -1,0 +1,10 @@
+{
+  // Type-checks the tests (run: npx tsc -p tests). Not part of the build.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "..",
+    "types": ["jest", "node"]
+  },
+  "include": [".", "../src"]
+}
