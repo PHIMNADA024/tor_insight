@@ -3,6 +3,8 @@ import { SyncLog } from "../models/index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 import { syncFiscalYear, currentFiscalYear } from "../services/bmaFetcher.js";
+import { runEgpSync } from "../services/egpFetcher.js";
+import { runGprocurementSync } from "../services/gprocurementFetcher.js";
 
 const router = Router();
 
@@ -123,6 +125,55 @@ router.post("/sync/bma", requireAuth, requireAdmin, async (req, res) => {
       error: error instanceof Error ? error.message : String(error),
     });
   }
+});
+
+/** A run younger than this that is still in_progress counts as running. */
+const RUNNING_WINDOW_MS = 60 * 60 * 1000;
+
+/** True if a sync for this source started recently and hasn't finished. */
+async function isRunning(sourceId: string): Promise<boolean> {
+  const since = new Date(Date.now() - RUNNING_WINDOW_MS);
+  const running = await SyncLog.exists({
+    sourceId,
+    status: "in_progress",
+    startedAt: { $gte: since },
+  });
+  return running !== null;
+}
+
+/** Manual sync per source. BMA has its own route above. */
+const MANUAL_SYNCS = new Map<string, () => Promise<unknown>>([
+  ["egp", () => runEgpSync("recent", "manual")],
+  ["gprocurement", () => runGprocurementSync("manual")],
+]);
+
+/**
+ * Starts a manual sync for e-GP or gprocurement (FR-07, #17).
+ * POST /api/admin/sync/egp
+ * POST /api/admin/sync/gprocurement
+ * Answers 202 right away; progress and result show up in /sync-logs.
+ */
+router.post("/sync/:source", requireAuth, requireAdmin, async (req, res) => {
+const source = String(req.params.source);
+  const run = MANUAL_SYNCS.get(source);
+
+  if (!run) {
+    return res.status(404).json({ message: `Unknown source: ${source}` });
+  }
+
+  try {
+    if (await isRunning(source)) {
+      return res.status(409).json({ message: `A ${source} sync is already running` });
+    }
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Failed to check sync status" });
+  }
+
+  // Runs in the background; withSyncLog records success or failure.
+  run().catch((error) => console.error(`Manual ${source} sync failed:`, error));
+
+  return res.status(202).json({ message: "Sync started", source });
 });
 
 export default router;
