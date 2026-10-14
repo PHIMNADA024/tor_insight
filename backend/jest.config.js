@@ -7,6 +7,7 @@
 export default {
   testEnvironment: "node",
   roots: ["<rootDir>/tests"],
+  setupFiles: ["<rootDir>/tests/setup-env.cjs"],
   testMatch: ["**/*.test.ts"],
   transform: {
     "^.+\\.ts$": [
