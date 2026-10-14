@@ -21,6 +21,8 @@ const EDITABLE_FIELDS = [
 
 const TOR_STATUSES = ["draft", "published", "archived"] as const;
 
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -67,6 +69,75 @@ router.get("/tors", requireAuth, requireAdmin, async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Failed to load TORs" });
+  }
+});
+
+/**
+ * TOR counts per status, plus new TORs added in the current
+ * and previous 7-day periods.
+ * GET /api/admin/tors/stats
+ */
+router.get("/tors/stats", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const since = new Date(Date.now() - WEEK_MS);
+
+    const [all, recentLogs] = await Promise.all([
+      Tor.aggregate([
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      AdminActionLog.find({
+        action: "tor.status_change",
+        createdAt: { $gte: since },
+      }).lean(),
+    ]);
+
+    const toCounts = (rows: { _id: string; count: number }[]) => ({
+      published: rows.find((r) => r._id === "published")?.count ?? 0,
+      draft: rows.find((r) => r._id === "draft")?.count ?? 0,
+      archived: rows.find((r) => r._id === "archived")?.count ?? 0,
+    });
+
+    const statusChanges = {
+      published: 0,
+      draft: 0,
+      archived: 0,
+    };
+
+    for (const log of recentLogs) {
+      const metadata = log.metadata as {
+        from?: string;
+        to?: string;
+      } | undefined;
+
+      const from = metadata?.from;
+      const to = metadata?.to;
+
+      if (
+        from &&
+        from in statusChanges &&
+        to &&
+        to in statusChanges &&
+        from !== to
+      ) {
+        statusChanges[from as keyof typeof statusChanges] -= 1;
+        statusChanges[to as keyof typeof statusChanges] += 1;
+      }
+    }
+
+    return res.json({
+      counts: toCounts(all),
+      statusChanges,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "Failed to load TOR stats",
+    });
   }
 });
 
