@@ -2,7 +2,7 @@ import { Router } from "express";
 import { SyncLog } from "../models/index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
-import { syncFiscalYear, currentFiscalYear } from "../services/bmaFetcher.js";
+import { syncFiscalYear, syncRecentFiscalYears } from "../services/bmaFetcher.js";
 import { runEgpSync } from "../services/egpFetcher.js";
 import { runGprocurementSync } from "../services/gprocurementFetcher.js";
 
@@ -115,8 +115,11 @@ router.get("/sync-logs/latest", requireAuth, requireAdmin, async (_req, res) => 
  */
 router.post("/sync/bma", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const fiscalYear = req.body?.fiscalYear ?? currentFiscalYear();
-    const result = await syncFiscalYear(fiscalYear, "manual");
+    // A specific year can still be requested; by default sync last + this year.
+    const fiscalYear = req.body?.fiscalYear;
+    const result = fiscalYear
+      ? await syncFiscalYear(Number(fiscalYear), "manual")
+      : await syncRecentFiscalYears("manual");
     return res.json({ message: "Sync completed", ...result });
   } catch (error) {
     console.error(error);

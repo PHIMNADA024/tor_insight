@@ -22,8 +22,10 @@ import { generalLimiter } from "./middleware/rateLimit.js";
 import { sanitizeBody } from "./middleware/sanitize.js";
 import { notFoundHandler } from "./middleware/notFound.js";
 import { errorHandler } from "./middleware/errorHandler.js";
-import { syncFiscalYear, currentFiscalYear } from "./services/bmaFetcher.js";
+import { syncRecentFiscalYears } from "./services/bmaFetcher.js";
+import { startEgpSyncSchedule } from "./jobs/egpSyncSchedule.js";
 import { startGprocurementSyncSchedule } from "./jobs/gprocurementSyncSchedule.js";
+
 
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled Rejection:", reason);
@@ -93,6 +95,7 @@ async function startServer() {
     });
 
     startGprocurementSyncSchedule();
+    startEgpSyncSchedule();
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);
@@ -105,7 +108,7 @@ if (BMA_SYNC_ENABLED) {
   cron.schedule(BMA_SYNC_CRON, async () => {
     console.log("Running scheduled BMA sync...");
     try {
-      const result = await syncFiscalYear(currentFiscalYear(), "scheduled");
+      const result = await syncRecentFiscalYears("scheduled");
       console.log("Scheduled BMA sync finished:", result);
     } catch (error) {
       console.error("Scheduled BMA sync failed:", error);
