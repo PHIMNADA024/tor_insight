@@ -324,3 +324,42 @@ export function syncFiscalYear(fiscalYear: number, trigger: SyncTrigger = "sched
     return processFile(filePath);
   });
 }
+
+/**
+ * Syncs the previous and the current fiscal year in one run (FR-07).
+ * BMA keeps updating last year's contracts after the year ends, and a new
+ * year's file only appears some weeks into the year (FY2570 started on
+ * 1 October with no file yet). A missing current-year file is skipped
+ * instead of failing the whole run.
+ */
+export function syncRecentFiscalYears(
+  trigger: SyncTrigger = "scheduled",
+  { today = new Date(), destDir = "data" }: { today?: Date; destDir?: string } = {},
+) {
+  return withSyncLog("bma", trigger, async () => {
+    const current = currentFiscalYear(today);
+    const newTorIds: string[] = [];
+    const total = { inserted: 0, updated: 0, skipped: 0, read: 0, newTorIds };
+
+    for (const fiscalYear of [current - 1, current]) {
+      let filePath: string;
+      try {
+        filePath = await downloadBmaFile(fiscalYear, destDir);
+      } catch (error) {
+        const notPublishedYet = fiscalYear === current && error instanceof NonRetryableError;
+        if (!notPublishedYet) throw error;
+        console.log(`BMA has no file for FY${fiscalYear} yet, skipping it`);
+        continue;
+      }
+
+      const counts = await processFile(filePath);
+      total.inserted += counts.inserted;
+      total.updated += counts.updated;
+      total.skipped += counts.skipped;
+      total.read += counts.read;
+      newTorIds.push(...(counts.newTorIds ?? []));
+    }
+
+    return total;
+  });
+}
