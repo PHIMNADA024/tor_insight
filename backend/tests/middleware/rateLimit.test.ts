@@ -27,8 +27,10 @@ async function freshRouter(path: string): Promise<Router> {
 
 function appWith(limiter: RequestHandler) {
   const app = express();
-  // Lets a test pretend to be a different client with X-Forwarded-For.
-  app.set("trust proxy", true);
+  // Lets a test pretend to be a different client with X-Forwarded-For. Only
+  // loopback is trusted: supertest connects from there, and express-rate-limit
+  // rejects `true` as too permissive.
+  app.set("trust proxy", "loopback");
   app.get("/", limiter, (_req, res) => res.json({ ok: true }));
   return app;
 }
