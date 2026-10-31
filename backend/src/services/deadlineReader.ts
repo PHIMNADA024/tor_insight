@@ -94,7 +94,10 @@ export async function readDeadline(pdf: Buffer, announcedAt: Date | undefined): 
     deadline = bangkokDate(announced.year + 1, month, day, time);
   }
 
-  if (Number.isNaN(deadline.getTime())) {
+  // JavaScript rolls an impossible date over (31 Feb becomes 3 Mar) instead of
+  // rejecting it, so check the day and month are still the ones that were read.
+  const parts = bangkokParts(deadline);
+  if (Number.isNaN(deadline.getTime()) || parts.month !== month || parts.day !== day) {
     return { deadline: null, reason: `unparseable date ${parsed.day} ${parsed.month} ${time}` };
   }
   if (deadline.getTime() - announcedAt.getTime() > MAX_DAYS_AFTER_ANNOUNCEMENT * DAY_MS) {
