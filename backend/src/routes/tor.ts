@@ -4,6 +4,7 @@ import { Tor } from "../models/tor.js";
 import { searchLimiter, summaryLimiter } from "../middleware/rateLimit.js";
 import { getTorSummary } from "../services/torSummary.js";
 import { GenAIUnavailableError } from "../services/genai.js";
+import { torDocuments } from "../services/torDocuments.js";
 import { toArabicDigits } from "../services/thaiDigits.js";
 
 const router = Router();
@@ -375,6 +376,7 @@ router.get("/:id", async (req, res) => {
       awardAmount: doc.awardAmount ?? undefined,
       contractStatus: doc.contractStatus,
       contracts: doc.contracts ?? [],
+      documents: torDocuments(doc),
       // When the agency last changed it, falling back to when we last synced it.
       lastUpdated: doc.sourceUpdatedAt ?? doc.updatedAt,
     });
