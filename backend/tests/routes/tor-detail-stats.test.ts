@@ -30,6 +30,8 @@ beforeAll(async () => {
       category: "tender_invitation",
       budgetAmount: 3_000_000,
       status: "published",
+      torPdfUrl: "https://egp2.bangkok.go.th/api/file/2/tor.pdf",
+      invitationPdfUrl: "https://egp2.bangkok.go.th/api/file/1/invite.pdf",
     },
     {
       ocid: "stats-medical-network",
@@ -136,6 +138,15 @@ describe("GET /api/tors/:id", () => {
       budgetAmount: 3_000_000,
     });
     expect(res.body.items).toEqual([]);
+  });
+  it("returns the TOR's documents as download links", async () => {
+  const res = await request(app).get(`/api/tors/${publishedId}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.documents).toEqual([
+      { type: "tor", url: "https://egp2.bangkok.go.th/api/file/2/tor.pdf", format: "pdf" },
+      { type: "invitation", url: "https://egp2.bangkok.go.th/api/file/1/invite.pdf", format: "pdf" },
+    ]);
   });
 
   it("hides drafts with 404", async () => {

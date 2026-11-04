@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Building2, Clock, ExternalLink, Sparkles } from "lucide-react";
+import { ArrowLeft, Building2, Clock, Download, ExternalLink, FileText, Sparkles } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Button } from "@/components/ui/button";
 import { categoryLabel } from "@/lib/categories";
@@ -27,6 +27,13 @@ type TorContract = {
   endDate?: string;
   amount?: number;
   amountSpent?: number;
+};
+
+type TorDocument = {
+  type: "tor" | "invitation" | "award" | "attachment";
+  title?: string;
+  url: string;
+  format?: string;
 };
 
 type TorDetail = {
@@ -54,6 +61,8 @@ type TorDetail = {
   awardAmount?: number;
   contractStatus?: string;
   contracts: TorContract[];
+  // FR-03: files linked straight from the agency, in their original format.
+  documents?: TorDocument[];
   lastUpdated?: string;
 };
 
@@ -83,6 +92,17 @@ function formatMoney(value?: number): string {
 // Opens the agency's own page directly rather than proxying through our backend.
 function openExternal(url?: string) {
   if (url) window.open(url, "_blank", "noopener,noreferrer");
+}
+
+const DOCUMENT_LABELS: Record<TorDocument["type"], string> = {
+  tor: "เอกสาร TOR",
+  invitation: "ประกาศเชิญชวน",
+  award: "ประกาศผู้ชนะการเสนอราคา",
+  attachment: "เอกสารแนบ",
+};
+
+function documentLabel(doc: TorDocument): string {
+  return doc.type === "attachment" && doc.title ? doc.title : DOCUMENT_LABELS[doc.type];
 }
 
 const card = "rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-card)]";
@@ -469,6 +489,32 @@ export function TorPage({ id }: { id: string }) {
           <TorSummarySection id={id} />
 
           <div className="space-y-6">
+            <section className={card}>
+              <h2 className="text-sm font-semibold">เอกสารประกอบ</h2>
+              {tor.documents && tor.documents.length > 0 ? (
+                <ul className="mt-3 space-y-2">
+                  {tor.documents.map((doc) => (
+                    <li key={doc.url}>
+                      <a
+                        href={doc.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
+                      >
+                        <FileText className="size-4 shrink-0 text-primary" />
+                        <span className="min-w-0 flex-1 truncate">{documentLabel(doc)}</span>
+                        {doc.format && (
+                          <span className="text-xs uppercase text-muted-foreground">{doc.format}</span>
+                        )}
+                        <Download className="size-3.5 shrink-0 text-muted-foreground" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground">ไม่มีเอกสารแนบจากหน่วยงาน</p>
+              )}
+            </section>
             <section className={card}>
               <h2 className="text-sm font-semibold">ข้อมูลแหล่งที่มา</h2>
               <p className="mt-2 text-xs text-muted-foreground">ลิงก์ต้นฉบับ</p>
