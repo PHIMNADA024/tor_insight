@@ -11,6 +11,9 @@ function buildMatch(query: Request["query"]): { match: Record<string, unknown> }
   const match: Record<string, unknown> = { status: "published" };
 
   const { agency } = query;
+  if (agency !== undefined && (typeof agency !== "string" || agency.length > 100)) {
+    return { error: "ชื่อหน่วยงานต้องมีความยาวไม่เกิน 100 ตัวอักษร" };
+  }
   if (typeof agency === "string" && agency.trim() !== "") {
     match.agency = agency.trim();
   }
@@ -19,8 +22,9 @@ function buildMatch(query: Request["query"]): { match: Record<string, unknown> }
   const fiscalYearParam = query.fiscalYear;
   if (fiscalYearParam !== undefined && !(typeof fiscalYearParam === "string" && fiscalYearParam.trim() === "")) {
     const fiscalYear = Number(fiscalYearParam);
-    if (typeof fiscalYearParam !== "string" || !Number.isInteger(fiscalYear)) {
-      return { error: "fiscalYear must be a whole number" };
+    if (typeof fiscalYearParam !== "string" || !/^\d+$/.test(fiscalYearParam) ||
+      !Number.isInteger(fiscalYear) || fiscalYear < 1900 || fiscalYear > 2200) {
+      return { error: "ปีงบประมาณต้องเป็นจำนวนเต็มระหว่าง 1900 ถึง 2200" };
     }
     match.fiscalYear = fiscalYear;
   }
