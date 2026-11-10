@@ -20,6 +20,7 @@ import adminUserRoutes from "./routes/admin-users.js";
 import statsRoutes from "./routes/stats.js";
 import { generalLimiter } from "./middleware/rateLimit.js";
 import { sanitizeBody } from "./middleware/sanitize.js";
+import { rejectNonObjectJsonBody, rejectPollutedQuery } from "./middleware/validation.js";
 import { notFoundHandler } from "./middleware/notFound.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { syncRecentFiscalYears } from "./services/bmaFetcher.js";
@@ -65,7 +66,9 @@ app.use(
 );
 
 app.use(generalLimiter);
+app.use(rejectPollutedQuery);
 app.use(express.json());
+app.use(rejectNonObjectJsonBody);
 app.use(sanitizeBody);
 
 app.get("/health", (_req, res) => {
