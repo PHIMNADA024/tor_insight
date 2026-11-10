@@ -75,6 +75,25 @@ describe("admin user permissions", () => {
     expect(response.status).toBe(403);
     expect(response.body.message).toBe("Admin access required");
   });
+
+  it("treats regex syntax in user searches literally", async () => {
+    const response = await request(app)
+      .get("/api/admin/users")
+      .query({ search: ".*" })
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.users).toEqual([]);
+  });
+
+  it("rejects unsupported user filters", async () => {
+    const response = await request(app)
+      .get("/api/admin/users")
+      .query({ role: "superuser" })
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+  });
 });
 
 describe("PATCH /api/admin/users/:id/disable and enable", () => {

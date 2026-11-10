@@ -6,6 +6,7 @@ import { requireAdmin } from "../middleware/requireAdmin.js";
 import { Feedback } from "../models/feedback.js";
 import { Notification } from "../models/notification.js";
 import { sendAccountDisabledEmail } from "../services/email.js";
+import { isObjectId } from "../middleware/validation.js";
 
 const router = Router();
 
@@ -16,12 +17,24 @@ const router = Router();
 router.get("/users", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { status, role, search } = req.query;
+    if (Object.values(req.query).some((value) => typeof value !== "string")) {
+      return res.status(400).json({ message: "กรุณาส่งค่าตัวกรองแต่ละรายการเพียงหนึ่งค่า" });
+    }
+    if (status !== undefined && status !== "active" && status !== "disabled") {
+      return res.status(400).json({ message: "สถานะผู้ใช้ต้องเป็นใช้งานหรือระงับการใช้งาน" });
+    }
+    if (role !== undefined && role !== "end_user" && role !== "admin") {
+      return res.status(400).json({ message: "ประเภทผู้ใช้ไม่ถูกต้อง" });
+    }
+    if (search !== undefined && (typeof search !== "string" || search.length > 100)) {
+      return res.status(400).json({ message: "คำค้นหาต้องมีความยาวไม่เกิน 100 ตัวอักษร" });
+    }
     const filter: Record<string, unknown> = {};
 
     if (typeof status === "string" && status) filter.status = status;
     if (typeof role === "string" && role) filter.role = role;
     if (typeof search === "string" && search.trim()) {
-      const term = search.trim();
+      const term = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       filter.$or = [
         { name: { $regex: term, $options: "i" } },
         { email: { $regex: term, $options: "i" } },
@@ -46,6 +59,7 @@ router.get("/users", requireAuth, requireAdmin, async (req, res) => {
  */
 router.patch("/users/:id/disable", requireAuth, requireAdmin, async (req, res) => {
   try {
+    if (!isObjectId(req.params.id)) return res.status(400).json({ message: "รหัสผู้ใช้ไม่ถูกต้อง" });
     const user = await User.findById(req.params.id);
 
     if (!user) {
@@ -88,6 +102,7 @@ router.patch("/users/:id/disable", requireAuth, requireAdmin, async (req, res) =
  */
 router.patch("/users/:id/enable", requireAuth, requireAdmin, async (req, res) => {
   try {
+    if (!isObjectId(req.params.id)) return res.status(400).json({ message: "รหัสผู้ใช้ไม่ถูกต้อง" });
     const user = await User.findById(req.params.id);
 
     if (!user) {
@@ -122,6 +137,7 @@ router.patch("/users/:id/enable", requireAuth, requireAdmin, async (req, res) =>
  */
 router.delete("/users/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
+    if (!isObjectId(req.params.id)) return res.status(400).json({ message: "รหัสผู้ใช้ไม่ถูกต้อง" });
     const user = await User.findById(req.params.id);
 
     if (!user) {
