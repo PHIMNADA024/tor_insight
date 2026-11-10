@@ -6,6 +6,7 @@ import { AdminActionLog } from "../models/adminActionLog.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 import { sendFeedbackResolvedEmail } from "../services/email.js";
+import { isObjectId, isRecord } from "../middleware/validation.js";
 
 const router = Router();
 
@@ -16,6 +17,9 @@ const router = Router();
 router.get("/feedback", requireAuth, requireAdmin, async (req, res) => {
   try {
     const status = typeof req.query.status === "string" ? req.query.status : undefined;
+    if (Object.values(req.query).some((value) => typeof value !== "string")) {
+      return res.status(400).json({ message: "กรุณาส่งค่าตัวกรองแต่ละรายการเพียงหนึ่งค่า" });
+    }
     const validStatuses = ["pending", "reviewed", "resolved"] as const;
 
     if (status && !validStatuses.includes(status as (typeof validStatuses)[number])) {
@@ -44,13 +48,22 @@ router.get("/feedback", requireAuth, requireAdmin, async (req, res) => {
  */
 router.patch("/feedback/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
+    if (!isObjectId(req.params.id)) return res.status(400).json({ message: "รหัสข้อเสนอแนะไม่ถูกต้อง" });
+    if (!isRecord(req.body)) return res.status(400).json({ message: "ข้อมูลที่ส่งมาไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    if (Object.keys(req.body).some((field) => !["status", "adminResponse"].includes(field))) {
+      return res.status(400).json({ message: "มีข้อมูลบางส่วนที่ไม่รองรับ กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
     const { status, adminResponse } = req.body;
 
-    if (!status || !["pending", "reviewed", "resolved"].includes(status)) {
+    if (typeof status !== "string" || !["pending", "reviewed", "resolved"].includes(status)) {
       return res.status(400).json({ message: "Valid status is required" });
     }
+    const validatedStatus = status as FeedbackDoc["status"];
 
-    if (status !== "pending" && (!adminResponse || !adminResponse.trim())) {
+    if (adminResponse !== undefined && (typeof adminResponse !== "string" || adminResponse.length > 2000)) {
+      return res.status(400).json({ message: "คำตอบต้องมีความยาวไม่เกิน 2,000 ตัวอักษร" });
+    }
+    if (status !== "pending" && (typeof adminResponse !== "string" || !adminResponse.trim())) {
       return res.status(400).json({
         message: "A response is required when updating feedback status",
       });
@@ -63,13 +76,13 @@ router.patch("/feedback/:id", requireAuth, requireAdmin, async (req, res) => {
     }
 
     const previousStatus = feedback.status;
-    feedback.status = status;
+    feedback.status = validatedStatus;
 
     if (typeof adminResponse === "string" && adminResponse.trim()) {
       feedback.adminResponse = adminResponse.trim();
     }
 
-    if (status === "resolved") {
+    if (validatedStatus === "resolved") {
       feedback.resolvedBy = req.user!.id as any;
       feedback.resolvedAt = new Date();
     }
@@ -81,7 +94,7 @@ router.patch("/feedback/:id", requireAuth, requireAdmin, async (req, res) => {
       action: "feedback.status_change",
       targetType: "Feedback",
       targetId: feedback._id,
-      metadata: { from: previousStatus, to: status },
+      metadata: { from: previousStatus, to: validatedStatus },
     });
     
     // Notify the user only when there's an actual response to show them
