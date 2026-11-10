@@ -5,16 +5,17 @@ import { requireAdmin } from "../middleware/requireAdmin.js";
 import { syncFiscalYear, syncRecentFiscalYears } from "../services/bmaFetcher.js";
 import { runEgpSync } from "../services/egpFetcher.js";
 import { runGprocurementSync } from "../services/gprocurementFetcher.js";
+import { isRecord } from "../middleware/validation.js";
 
 const router = Router();
 
 const STATUS_VALUES = ["in_progress", "success", "failed"] as const;
 
 /** Parses a query param into a positive integer, or undefined if absent/invalid. */
-function parsePositiveInt(value: unknown): number | undefined {
+function parsePositiveInt(value: unknown, max = Number.MAX_SAFE_INTEGER): number | undefined {
   if (typeof value !== "string" || value.trim() === "") return undefined;
   const n = Number(value);
-  return Number.isInteger(n) && n >= 1 ? n : undefined;
+  return /^\d+$/.test(value) && Number.isSafeInteger(n) && n >= 1 && n <= max ? n : undefined;
 }
 
 /** Shapes a SyncLog document for the dashboard, adding run duration. */
@@ -47,21 +48,27 @@ function toResponse(doc: any) {
 router.get("/sync-logs", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { sourceId, status } = req.query;
+    if (Object.values(req.query).some((value) => typeof value !== "string")) {
+      return res.status(400).json({ message: "กรุณาส่งค่าตัวกรองแต่ละรายการเพียงหนึ่งค่า" });
+    }
 
     if (status !== undefined && !STATUS_VALUES.includes(status as never)) {
       return res.status(400).json({
         message: `status must be one of: ${STATUS_VALUES.join(", ")}`,
       });
     }
+    if (sourceId !== undefined && !["bma", "egp", "gprocurement"].includes(sourceId as string)) {
+      return res.status(400).json({ message: "แหล่งข้อมูลไม่ถูกต้อง" });
+    }
 
-    if (req.query.page !== undefined && parsePositiveInt(req.query.page) === undefined) {
-      return res.status(400).json({ message: "page must be a positive integer" });
+    if (req.query.page !== undefined && parsePositiveInt(req.query.page, 1_000_000) === undefined) {
+      return res.status(400).json({ message: "หมายเลขหน้าต้องเป็นจำนวนเต็มตั้งแต่ 1 ถึง 1,000,000" });
     }
     if (req.query.limit !== undefined && parsePositiveInt(req.query.limit) === undefined) {
-      return res.status(400).json({ message: "limit must be a positive integer" });
+      return res.status(400).json({ message: "จำนวนรายการต่อหน้าต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป" });
     }
 
-    const page = parsePositiveInt(req.query.page) ?? 1;
+    const page = parsePositiveInt(req.query.page, 1_000_000) ?? 1;
     const limit = Math.min(parsePositiveInt(req.query.limit) ?? 20, 100);
 
     const filter: Record<string, unknown> = {};
@@ -115,10 +122,20 @@ router.get("/sync-logs/latest", requireAuth, requireAdmin, async (_req, res) => 
  */
 router.post("/sync/bma", requireAuth, requireAdmin, async (req, res) => {
   try {
+    if (req.body !== undefined && !isRecord(req.body)) {
+      return res.status(400).json({ message: "ข้อมูลที่ส่งมาไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
+    if (req.body && Object.keys(req.body).some((field) => field !== "fiscalYear")) {
+      return res.status(400).json({ message: "มีข้อมูลบางส่วนที่ไม่รองรับ กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
     // A specific year can still be requested; by default sync last + this year.
     const fiscalYear = req.body?.fiscalYear;
-    const result = fiscalYear
-      ? await syncFiscalYear(Number(fiscalYear), "manual")
+    if (fiscalYear !== undefined &&
+      (typeof fiscalYear !== "number" || !Number.isInteger(fiscalYear) || fiscalYear < 1900 || fiscalYear > 2200)) {
+      return res.status(400).json({ message: "ปีงบประมาณต้องเป็นจำนวนเต็มระหว่าง 1900 ถึง 2200" });
+    }
+    const result = fiscalYear !== undefined
+      ? await syncFiscalYear(fiscalYear, "manual")
       : await syncRecentFiscalYears("manual");
     return res.json({ message: "Sync completed", ...result });
   } catch (error) {

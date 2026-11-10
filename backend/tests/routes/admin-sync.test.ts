@@ -161,9 +161,9 @@ describe("GET /api/admin/sync-logs", () => {
 
   it.each([
     ["status=done", "status must be one of"],
-    ["page=0", "page must be a positive integer"],
-    ["page=abc", "page must be a positive integer"],
-    ["limit=-5", "limit must be a positive integer"],
+    ["page=0", "หมายเลขหน้าต้องเป็นจำนวนเต็ม"],
+    ["page=abc", "หมายเลขหน้าต้องเป็นจำนวนเต็ม"],
+    ["limit=-5", "จำนวนรายการต่อหน้าต้องเป็นจำนวนเต็ม"],
   ])("answers 400 for %s", async (query, message) => {
     const res = await asAdmin(request(app).get(`/api/admin/sync-logs?${query}`));
 
