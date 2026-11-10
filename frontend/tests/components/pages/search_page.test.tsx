@@ -171,10 +171,10 @@ describe("Search page", () => {
 
   describe("errors", () => {
     it("shows the API's message when the request is rejected", async () => {
-      searchReply = { status: 400, body: { message: "budgetMin must not exceed budgetMax" } };
+      searchReply = { status: 400, body: { message: "งบประมาณขั้นต่ำต้องไม่มากกว่างบประมาณขั้นสูง" } };
       await renderPage();
 
-      expect(screen.getByText("budgetMin must not exceed budgetMax")).toBeInTheDocument();
+      expect(screen.getByText("งบประมาณขั้นต่ำต้องไม่มากกว่างบประมาณขั้นสูง")).toBeInTheDocument();
       expect(screen.queryAllByRole("article")).toHaveLength(0);
     });
 
@@ -233,6 +233,24 @@ describe("Search page", () => {
         sort: "date",
         page: "1",
       });
+    });
+
+    it("does not allow dashes in budget filters", async () => {
+      await renderPage();
+      const minimum = screen.getByPlaceholderText("ต่ำสุด");
+      const maximum = screen.getByPlaceholderText("สูงสุด");
+
+      fireEvent.change(minimum, { target: { value: "1000" } });
+      fireEvent.change(maximum, { target: { value: "2000" } });
+      fireEvent.change(minimum, { target: { value: "--" } });
+      fireEvent.change(maximum, { target: { value: "12--" } });
+
+      expect(minimum).toHaveValue("1000");
+      expect(maximum).toHaveValue("2000");
+      fireEvent.click(screen.getByRole("button", { name: "ใช้ตัวกรอง" }));
+
+      await waitFor(() => expect(searchRequests()).toHaveLength(2));
+      expect(lastSearch()).toMatchObject({ budgetMin: "1000", budgetMax: "2000" });
     });
 
     it("searches again when the sort order changes", async () => {
