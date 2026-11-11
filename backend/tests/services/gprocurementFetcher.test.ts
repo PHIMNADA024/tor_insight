@@ -304,6 +304,17 @@ describe("skipping", () => {
     expect(mockReadDeadline).not.toHaveBeenCalled();
   });
 
+  it("doesn't follow a PDF link that redirects away from the government site (SSRF)", async () => {
+    const item = addItem();
+    feed.pdfs.set(item.pdf, new Response(null, { status: 302, headers: { Location: "http://169.254.169.254/latest/meta-data" } }));
+
+    const counts = await runGprocurementSync("manual");
+
+    expect(counts.skipped).toBe(1);
+    expect(await findTor(item.projectNumber)).toBeNull();
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).not.toContainEqual(expect.stringContaining("169.254"));
+  });
+
   it("skips a PDF over 15 MB", async () => {
     const item = addItem();
     const big = Buffer.alloc(15 * 1024 * 1024 + 1);

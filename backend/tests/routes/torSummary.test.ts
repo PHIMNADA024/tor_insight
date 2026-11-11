@@ -255,15 +255,15 @@ describe("GET /api/tors/:id/summary", () => {
       modelReplies("สรุปจากเอกสาร");
       fetchSpy.mockResolvedValue(pdfResponse());
       const tor = await createTor({
-        torPdfUrl: "https://egp.example/tor.pdf",
-        invitationPdfUrl: "https://egp.example/invitation.pdf",
+        torPdfUrl: "https://egp2.bangkok.go.th/api/file/tor.pdf",
+        invitationPdfUrl: "https://egp2.bangkok.go.th/api/file/invitation.pdf",
       });
 
       const res = await getSummary(tor._id);
       const { prompt, pdf } = sentToModel();
 
       expect(res.status).toBe(200);
-      expect(fetchSpy).toHaveBeenCalledWith("https://egp.example/tor.pdf", expect.anything());
+      expect(fetchSpy).toHaveBeenCalledWith("https://egp2.bangkok.go.th/api/file/tor.pdf", expect.anything());
       expect(pdf).toEqual({
         mimeType: "application/pdf",
         data: Buffer.from("%PDF-1.7 fake tor document").toString("base64"),
@@ -274,18 +274,18 @@ describe("GET /api/tors/:id/summary", () => {
     it("falls back to the invitation PDF when there is no TOR PDF", async () => {
       modelReplies("สรุป");
       fetchSpy.mockResolvedValue(pdfResponse());
-      const tor = await createTor({ invitationPdfUrl: "https://egp.example/invitation.pdf" });
+      const tor = await createTor({ invitationPdfUrl: "https://egp2.bangkok.go.th/api/file/invitation.pdf" });
 
       await getSummary(tor._id);
 
-      expect(fetchSpy).toHaveBeenCalledWith("https://egp.example/invitation.pdf", expect.anything());
+      expect(fetchSpy).toHaveBeenCalledWith("https://egp2.bangkok.go.th/api/file/invitation.pdf", expect.anything());
       expect(sentToModel().pdf).toBeDefined();
     });
 
     it("ignores a download that isn't a PDF and summarises from the fields", async () => {
       modelReplies("สรุปจากข้อมูล");
       fetchSpy.mockResolvedValue(new Response("<html>login page</html>", { status: 200 }));
-      const tor = await createTor({ torPdfUrl: "https://egp.example/tor.pdf" });
+      const tor = await createTor({ torPdfUrl: "https://egp2.bangkok.go.th/api/file/tor.pdf" });
 
       const res = await getSummary(tor._id);
       const { prompt, pdf } = sentToModel();
@@ -297,7 +297,7 @@ describe("GET /api/tors/:id/summary", () => {
 
     it("still summarises when the download fails", async () => {
       modelReplies("สรุปจากข้อมูล");
-      const tor = await createTor({ torPdfUrl: "https://egp.example/tor.pdf" });
+      const tor = await createTor({ torPdfUrl: "https://egp2.bangkok.go.th/api/file/tor.pdf" });
 
       const res = await getSummary(tor._id);
 
@@ -313,6 +313,36 @@ describe("GET /api/tors/:id/summary", () => {
       await getSummary(tor._id);
 
       expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["an internal address", "http://169.254.169.254/latest/meta-data"],
+      ["the server itself", "https://localhost:4000/api/admin/users"],
+      ["another site", "https://evil.example/tor.pdf"],
+      ["a look-alike of a government site", "https://egp2.bangkok.go.th.evil.example/tor.pdf"],
+    ])("never requests a link to %s, and summarises from the fields (SSRF)", async (_case, url) => {
+      modelReplies("สรุปจากข้อมูล");
+      const tor = await createTor({ torPdfUrl: url });
+
+      const res = await getSummary(tor._id);
+
+      expect(res.status).toBe(200);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(sentToModel().pdf).toBeUndefined();
+    });
+
+    it("doesn't follow a redirect away from the government site (SSRF)", async () => {
+      modelReplies("สรุปจากข้อมูล");
+      fetchSpy.mockResolvedValue(
+        new Response(null, { status: 302, headers: { Location: "http://169.254.169.254/latest/meta-data" } }),
+      );
+      const tor = await createTor({ torPdfUrl: "https://egp2.bangkok.go.th/api/file/tor.pdf" });
+
+      const res = await getSummary(tor._id);
+
+      expect(res.status).toBe(200);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(sentToModel().pdf).toBeUndefined();
     });
   });
 

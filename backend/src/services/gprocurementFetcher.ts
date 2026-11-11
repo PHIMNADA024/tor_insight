@@ -16,6 +16,7 @@ import { NonRetryableError, sleep, withRetry } from "./http.js";
 import { withSyncLog, type SyncCounts, type SyncTrigger } from "./syncRun.js";
 import { askAboutPdf, MAX_PDF_BYTES } from "./genai.js";
 import { readDeadline } from "./deadlineReader.js";
+import { isAllowedSourceUrl, safeFetch } from "./safeFetch.js";
 import { toArabicDigitsOpt } from "./thaiDigits.js";
 import { egpSearchUrl } from "./egpLinks.js";
 import { summarizeTorDocument } from "./torDocumentSummary.js";
@@ -45,7 +46,7 @@ type FeedItem = {
 async function get(url: string): Promise<Response> {
   await sleep(REQUEST_GAP_MS);
   return withRetry(async () => {
-    const res = await fetch(url, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(45_000) });
+    const res = await safeFetch(url, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(45_000) });
     if (res.status >= 400 && res.status < 500) throw new NonRetryableError(`${url}: HTTP ${res.status}`);
     if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
     return res;
@@ -119,6 +120,8 @@ async function processItem(item: FeedItem, knownNumbers: Set<string>): Promise<P
   // Already collected from BMA or Bangkok's e-GP (FR-08).
   if (knownNumbers.has(item.projectNumber)) return "skipped: duplicate of another source";
 
+  // The link comes from the feed: only follow it to a government site (SSRF).
+  if (!isAllowedSourceUrl(item.link)) return "skipped: link is not on a government site";
   const pdf = Buffer.from(await (await get(item.link)).arrayBuffer());
   if (pdf.subarray(0, 4).toString("latin1") !== "%PDF") return "skipped: link is not a PDF";
   if (pdf.length > MAX_PDF_BYTES) return "skipped: PDF too large";
