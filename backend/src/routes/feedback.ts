@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { Feedback, type FeedbackDoc } from "../models/feedback.js";
+import { LockBusyError, withLock } from "../services/lock.js";
 import { Tor } from "../models/tor.js";
 import { Notification } from "../models/notification.js";
 import { User } from "../models/user.js";
@@ -139,39 +140,46 @@ router.post("/", requireAuth, async (req, res) => {
       ? `${linkedTor.title} — ${linkedTor.agency}`
       : undefined;
 
-    // --- Rate limiting: prevent spam submissions ---
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const recentCount = await Feedback.countDocuments({
-      userId: req.user!.id,
-      createdAt: { $gte: oneDayAgo },
-    });
-
-    if (recentCount >= MAX_SUBMISSIONS_PER_DAY) {
-      return res.status(429).json({
-        message: "You've reached the daily feedback submission limit. Please try again tomorrow.",
+    // --- Daily limit and duplicate check, then save (V15.4.2) ---
+    // Run under a per-user lock, so the checks and the save are one step:
+    // parallel requests can't all pass "fewer than 10 today" before any saves.
+    const userId = req.user!.id;
+    const result = await withLock(`feedback:${userId}`, async () => {
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const recentCount = await Feedback.countDocuments({
+        userId,
+        createdAt: { $gte: oneDayAgo },
       });
-    }
 
-    // --- Duplicate check: same user, same description, very recently ---
-    const recentDuplicate = await Feedback.findOne({
-      userId: req.user!.id,
-      description: trimmedDescription,
-      createdAt: { $gte: new Date(Date.now() - 5 * 60 * 1000) },
-    });
+      if (recentCount >= MAX_SUBMISSIONS_PER_DAY) {
+        return { status: 429, message: "You've reached the daily feedback submission limit. Please try again tomorrow." } as const;
+      }
 
-    if (recentDuplicate) {
-      return res.status(409).json({
-        message: "You've already submitted this feedback recently",
+      // Same user, same description, very recently.
+      const recentDuplicate = await Feedback.findOne({
+        userId,
+        description: trimmedDescription,
+        createdAt: { $gte: new Date(Date.now() - 5 * 60 * 1000) },
       });
-    }
 
-    const feedback = await Feedback.create({
-      userId: req.user!.id,
-      category,
-      description: trimmedDescription,
-      torId: torId || undefined,
-      torReference,
+      if (recentDuplicate) {
+        return { status: 409, message: "You've already submitted this feedback recently" } as const;
+      }
+
+      const created = await Feedback.create({
+        userId,
+        category,
+        description: trimmedDescription,
+        torId: torId || undefined,
+        torReference,
+      });
+      return { status: 201, feedback: created } as const;
     });
+
+    if (result.status !== 201) {
+      return res.status(result.status).json({ message: result.message });
+    }
+    const { feedback } = result;
 
     notifyAdminsOfNewFeedback(
       feedback._id.toString(),
@@ -185,6 +193,10 @@ router.post("/", requireAuth, async (req, res) => {
 
     return res.status(201).json({ message: "Feedback submitted", feedback });
   } catch (error) {
+    // Another submission from this user is being saved right now.
+    if (error instanceof LockBusyError) {
+      return res.status(429).json({ message: "Your previous feedback is still being saved. Please try again." });
+    }
     console.error(error);
     return res.status(500).json({ message: "Failed to submit feedback" });
   }
