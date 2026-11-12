@@ -218,13 +218,9 @@ describe("email service", () => {
     });
   });
 
-  /**
-   * Known bug: the templates don't escape user input yet, so these fail for now.
-   * it.failing keeps CI green until "Fix Email Injection and Regex Security" is
-   * done; these then report a failure, and it.failing should become it.
-   */
+  /** User and TOR data is escaped before it goes into the HTML (V1.2.1, V1.3.3, V1.3.11). */
   describe("escaping user input", () => {
-    it.failing.each<[string, () => Promise<void>]>([
+    it.each<[string, () => Promise<void>]>([
       ["the name in a TOR match", () => email.sendTorMatchEmail(TO, SCRIPT, [TOR])],
       ["a TOR title", () => email.sendTorMatchEmail(TO, "สมชาย", [{ ...TOR, title: SCRIPT }])],
       ["a TOR agency", () => email.sendTorMatchEmail(TO, "สมชาย", [{ ...TOR, agency: SCRIPT }])],
@@ -244,7 +240,7 @@ describe("email service", () => {
       expect(html).toContain("&lt;script&gt;");
     });
 
-    it.failing("doesn't let a source URL break out of the link", async () => {
+    it("doesn't let a source URL break out of the link", async () => {
       const sourceUrl = `https://example.com/"><img src=x onerror=alert(1)>`;
 
       await email.sendTorMatchEmail(TO, "สมชาย", [{ ...TOR, sourceUrl }]);
@@ -252,10 +248,52 @@ describe("email service", () => {
       expect(sentMail().html).not.toContain("<img");
     });
 
-    it.failing("doesn't link to a javascript: source URL", async () => {
+    it("doesn't link to a javascript: source URL", async () => {
       await email.sendTorMatchEmail(TO, "สมชาย", [{ ...TOR, sourceUrl: "javascript:alert(1)" }]);
 
       expect(sentMail().html).not.toContain("javascript:");
+    });
+
+    it("still links to an ordinary https source URL", async () => {
+      await email.sendTorMatchEmail(TO, "สมชาย", [TOR]);
+
+      expect(sentMail().html).toContain(`<a href="${TOR.sourceUrl}">`);
+    });
+
+    it("shows ordinary Thai text unchanged", async () => {
+      await email.sendFeedbackResolvedEmail(TO, "สมชาย", "ข้อมูลงบประมาณไม่ถูกต้อง", "แก้ไขแล้ว ขอบคุณครับ");
+
+      const { html } = sentMail();
+      expect(html).toContain("สวัสดีคุณ สมชาย,");
+      expect(html).toContain("ข้อมูลงบประมาณไม่ถูกต้อง");
+    });
+  });
+
+  describe("escapeHtml", () => {
+    it("escapes the characters that can break out of HTML text or an attribute", () => {
+      expect(email.escapeHtml(`<a href="x" onclick='y'>&</a>`)).toBe(
+        "&lt;a href=&quot;x&quot; onclick=&#39;y&#39;&gt;&amp;&lt;/a&gt;",
+      );
+    });
+
+    it("turns missing values into an empty string", () => {
+      expect(email.escapeHtml(undefined)).toBe("");
+      expect(email.escapeHtml(null)).toBe("");
+    });
+  });
+
+  describe("safeHref", () => {
+    it.each(["javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "not a url", "", undefined])(
+      "gives no link for %p",
+      (url) => {
+        expect(email.safeHref(url)).toBeUndefined();
+      },
+    );
+
+    it("escapes quotes and brackets so the URL can't leave the href", () => {
+      const href = email.safeHref(`https://example.com/"><img src=x>`);
+
+      expect(href).toBe("https://example.com/&quot;&gt;&lt;img src=x&gt;");
     });
   });
 });
