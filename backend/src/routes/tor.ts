@@ -6,6 +6,7 @@ import { getTorSummary } from "../services/torSummary.js";
 import { GenAIUnavailableError } from "../services/genai.js";
 import { torDocuments } from "../services/torDocuments.js";
 import { toArabicDigits } from "../services/thaiDigits.js";
+import { parsePositiveInteger } from "../middleware/validation.js";
 
 const router = Router();
 
@@ -51,9 +52,9 @@ function escapeRegex(value: string) {
 
 /** Parses a query param into a finite number, or undefined if absent/invalid. */
 function parseNumber(value: unknown): number | undefined {
-  if (typeof value !== "string" || value.trim() === "") return undefined;
+  if (typeof value !== "string" || value.trim() === "" || !/^-?\d+(?:\.\d+)?$/.test(value.trim())) return undefined;
   const n = Number(value);
-  return Number.isFinite(n) ? n : undefined;
+  return Number.isFinite(n) && Math.abs(n) <= Number.MAX_SAFE_INTEGER ? n : undefined;
 }
 
 /**
@@ -62,6 +63,9 @@ function parseNumber(value: unknown): number | undefined {
  */
 router.get("/", searchLimiter, async (req, res) => {
   try {
+    if (Object.values(req.query).some((value) => typeof value !== "string")) {
+      return res.status(400).json({ message: "กรุณาส่งค่าตัวกรองแต่ละรายการเพียงหนึ่งค่า" });
+    }
     const { keyword, agency, category, sort, bidding } = req.query;
 
     if (sort !== undefined && !SORT_VALUES.includes(sort as SortValue)) {
@@ -71,35 +75,49 @@ router.get("/", searchLimiter, async (req, res) => {
     }
 
     const fiscalYear = parseNumber(req.query.fiscalYear);
-    if (req.query.fiscalYear !== undefined && fiscalYear === undefined) {
-      return res.status(400).json({ message: "fiscalYear must be a number" });
+    if (req.query.fiscalYear !== undefined &&
+      (fiscalYear === undefined || !/^\d+$/.test(String(req.query.fiscalYear)) ||
+        !Number.isInteger(fiscalYear) || fiscalYear < 1900 || fiscalYear > 2200)) {
+      return res.status(400).json({ message: "ปีงบประมาณต้องเป็นจำนวนเต็มระหว่าง 1900 ถึง 2200" });
     }
 
     const budgetMin = parseNumber(req.query.budgetMin);
-    if (req.query.budgetMin !== undefined && budgetMin === undefined) {
-      return res.status(400).json({ message: "budgetMin must be a number" });
+    if (req.query.budgetMin !== undefined &&
+      (budgetMin === undefined || budgetMin < 0 || budgetMin > 1_000_000_000_000_000)) {
+      return res.status(400).json({ message: "กรุณากรอกงบประมาณขั้นต่ำเป็นตัวเลขตั้งแต่ 0 ขึ้นไป" });
     }
 
     const budgetMax = parseNumber(req.query.budgetMax);
-    if (req.query.budgetMax !== undefined && budgetMax === undefined) {
-      return res.status(400).json({ message: "budgetMax must be a number" });
+    if (req.query.budgetMax !== undefined &&
+      (budgetMax === undefined || budgetMax < 0 || budgetMax > 1_000_000_000_000_000)) {
+      return res.status(400).json({ message: "กรุณากรอกงบประมาณขั้นสูงเป็นตัวเลขตั้งแต่ 0 ขึ้นไป" });
     }
 
     if (budgetMin !== undefined && budgetMax !== undefined && budgetMin > budgetMax) {
-      return res.status(400).json({ message: "budgetMin must not exceed budgetMax" });
+      return res.status(400).json({ message: "งบประมาณขั้นต่ำต้องไม่มากกว่างบประมาณขั้นสูง" });
     }
 
-    const pageInput = parseNumber(req.query.page);
+    const pageInput = parsePositiveInteger(req.query.page, 1_000_000);
     if (req.query.page !== undefined && pageInput === undefined) {
-      return res.status(400).json({ message: "page must be a number" });
+      return res.status(400).json({ message: "หมายเลขหน้าต้องเป็นจำนวนเต็มตั้งแต่ 1 ถึง 1,000,000" });
     }
-    const page = pageInput && pageInput >= 1 ? Math.floor(pageInput) : 1;
+    const page = pageInput ?? 1;
 
-    const limitInput = parseNumber(req.query.limit);
+    const limitInput = parsePositiveInteger(req.query.limit);
     if (req.query.limit !== undefined && limitInput === undefined) {
-      return res.status(400).json({ message: "limit must be a number" });
+      return res.status(400).json({ message: "จำนวนรายการต่อหน้าต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป" });
     }
-    const limit = limitInput && limitInput >= 1 ? Math.floor(Math.min(limitInput, 100)) : 20;
+    const limit = Math.min(limitInput ?? 20, 100);
+
+    for (const [field, value, maxLength] of [
+      ["keyword", keyword, 200],
+      ["agency", agency, 100],
+      ["category", category, 100],
+    ] as const) {
+      if (value !== undefined && (typeof value !== "string" || value.length > maxLength)) {
+        return res.status(400).json({ message: `${field} must be a string of at most ${maxLength} characters` });
+      }
+    }
 
     const filter: Record<string, unknown> = { status: "published" };
 

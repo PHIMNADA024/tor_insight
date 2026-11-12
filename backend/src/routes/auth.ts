@@ -7,12 +7,13 @@ import { sendVerificationEmail } from "../services/email.js";
 import { sendPasswordResetEmail } from "../services/email.js";
 import { requireAuth } from "../middleware/auth.js";
 import { authLimiter, otpLimiter } from "../middleware/rateLimit.js";
+import { isBoundedString, isEmailAddress, isRecord } from "../middleware/validation.js";
 
 const router = Router();
 const FRONTEND_URL = process.env.FRONTEND_ORIGIN ?? "http://localhost:3000";
 
 function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
 }
 
 function hashToken(token: string) {
@@ -25,15 +26,32 @@ function hashToken(token: string) {
  */
 router.post("/register", authLimiter, async (req, res) => {
   try {
+    if (!isRecord(req.body)) {
+      return res.status(400).json({ message: "ข้อมูลที่ส่งมาไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
     const { name, email, password } = req.body;
+    if (Object.keys(req.body).some((field) => !["name", "email", "password"].includes(field))) {
+      return res.status(400).json({ message: "มีข้อมูลบางส่วนที่ไม่รองรับ กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
 
     if (!name || !email || !password) {
-      return res.status(400).json({
-        message: "Name, email and password are required",
-      });
+      return res.status(400).json({ message: "Name, email and password are required" });
+    }
+    if (!isBoundedString(name, 1, 100)) {
+      return res.status(400).json({ message: "ชื่อต้องมีความยาว 1–100 ตัวอักษร" });
+    }
+    if (!isEmailAddress(email)) {
+      return res.status(400).json({ message: "กรุณากรอกอีเมลให้ถูกต้อง" });
+    }
+    if (typeof password !== "string" || password.length < 8) {
+      return res.status(400).json({ message: "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร" });
+    }
+    if (Buffer.byteLength(password, "utf8") > 72) {
+      return res.status(400).json({ message: "รหัสผ่านยาวเกินไป กรุณาใช้รหัสผ่านที่สั้นลง" });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
+    const normalizedName = name.trim();
 
     const existingUser = await User.findOne({
       email: normalizedEmail,
@@ -50,7 +68,7 @@ router.post("/register", authLimiter, async (req, res) => {
     const otp = generateOTP();
 
     const user = await User.create({
-      name,
+      name: normalizedName,
       email: normalizedEmail,
       passwordHash,
       role: "end_user",
@@ -79,12 +97,25 @@ router.post("/register", authLimiter, async (req, res) => {
 
 router.post("/login", authLimiter, async (req, res) => {
   try {
+    if (!isRecord(req.body)) {
+      return res.status(400).json({ message: "ข้อมูลที่ส่งมาไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
     const { email, password } = req.body;
+    if (Object.keys(req.body).some((field) => !["email", "password"].includes(field))) {
+      return res.status(400).json({ message: "มีข้อมูลบางส่วนที่ไม่รองรับ กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
 
     if (!email || !password) {
-      return res.status(400).json({
-        message: "Email and password are required",
-      });
+      return res.status(400).json({ message: "Email and password are required" });
+    }
+    if (!isEmailAddress(email)) {
+      return res.status(400).json({ message: "กรุณากรอกอีเมลให้ถูกต้อง" });
+    }
+    if (typeof password !== "string" || password.length === 0) {
+      return res.status(400).json({ message: "กรุณากรอกรหัสผ่าน" });
+    }
+    if (Buffer.byteLength(password, "utf8") > 72) {
+      return res.status(400).json({ message: "รหัสผ่านยาวเกินไป กรุณาใช้รหัสผ่านที่สั้นลง" });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -146,11 +177,17 @@ router.post("/login", authLimiter, async (req, res) => {
  */
 router.post("/verify-email", otpLimiter, async (req, res) => {
   try {
+    if (!isRecord(req.body)) {
+      return res.status(400).json({ message: "ข้อมูลที่ส่งมาไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
     const { email, otp } = req.body;
+    if (Object.keys(req.body).some((field) => !["email", "otp"].includes(field))) {
+      return res.status(400).json({ message: "มีข้อมูลบางส่วนที่ไม่รองรับ กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
 
-    if (!email || !otp) {
+    if (!isEmailAddress(email) || typeof otp !== "string" || !/^\d{6}$/.test(otp)) {
       return res.status(400).json({
-        message: "Email and OTP are required",
+        message: "A valid email and six-digit OTP are required",
       });
     }
 
@@ -213,9 +250,15 @@ router.post("/verify-email", otpLimiter, async (req, res) => {
  */
 router.post("/resend-otp", otpLimiter, async (req, res) => {
   try {
+    if (!isRecord(req.body)) {
+      return res.status(400).json({ message: "ข้อมูลที่ส่งมาไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
     const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+    if (Object.keys(req.body).some((field) => field !== "email")) {
+      return res.status(400).json({ message: "มีข้อมูลบางส่วนที่ไม่รองรับ กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
+    if (!isEmailAddress(email)) {
+      return res.status(400).json({ message: "A valid email is required" });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -248,10 +291,16 @@ router.post("/resend-otp", otpLimiter, async (req, res) => {
  */
 router.post("/forgot-password", authLimiter, async (req, res) => {
   try {
+    if (!isRecord(req.body)) {
+      return res.status(400).json({ message: "ข้อมูลที่ส่งมาไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
     const { email } = req.body;
+    if (Object.keys(req.body).some((field) => field !== "email")) {
+      return res.status(400).json({ message: "มีข้อมูลบางส่วนที่ไม่รองรับ กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
 
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+    if (!isEmailAddress(email)) {
+      return res.status(400).json({ message: "A valid email is required" });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -287,18 +336,24 @@ router.post("/forgot-password", authLimiter, async (req, res) => {
  */
 router.post("/reset-password", authLimiter, async (req, res) => {
   try {
+    if (!isRecord(req.body)) {
+      return res.status(400).json({ message: "ข้อมูลที่ส่งมาไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
     const { email, token, newPassword } = req.body;
-
-    if (!email || !token || !newPassword) {
-      return res.status(400).json({
-        message: "Email, token and new password are required",
-      });
+    if (Object.keys(req.body).some((field) => !["email", "token", "newPassword"].includes(field))) {
+      return res.status(400).json({ message: "มีข้อมูลบางส่วนที่ไม่รองรับ กรุณาตรวจสอบแล้วลองอีกครั้ง" });
     }
 
-    if (newPassword.length < 8) {
+    if (!isEmailAddress(email) || typeof token !== "string" || !/^[a-f0-9]{64}$/i.test(token)) {
       return res.status(400).json({
-        message: "Password must be at least 8 characters",
+        message: "ลิงก์ตั้งรหัสผ่านใหม่ไม่ถูกต้องหรือหมดอายุ กรุณาขอลิงก์ใหม่",
       });
+    }
+    if (typeof newPassword !== "string" || newPassword.length < 8) {
+      return res.status(400).json({ message: "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร" });
+    }
+    if (Buffer.byteLength(newPassword, "utf8") > 72) {
+      return res.status(400).json({ message: "รหัสผ่านยาวเกินไป กรุณาใช้รหัสผ่านที่สั้นลง" });
     }
 
     const normalizedEmail = email.toLowerCase().trim();

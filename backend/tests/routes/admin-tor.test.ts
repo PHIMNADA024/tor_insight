@@ -166,8 +166,6 @@ describe("PUT /api/admin/tors/:id", () => {
         title: "Corrected title",
         agency: "Updated Agency",
         budgetAmount: 250_000,
-        status: "published",
-        ocid: "client-attempted-ocid-change",
       });
 
     expect(response.status).toBe(200);
@@ -176,7 +174,6 @@ describe("PUT /api/admin/tors/:id", () => {
       agency: "Updated Agency",
       budgetAmount: 250_000,
       status: "draft",
-      ocid: tor.ocid,
     });
 
     const saved = await Tor.findById(tor._id);
@@ -194,6 +191,17 @@ describe("PUT /api/admin/tors/:id", () => {
     });
     expect(log?.metadata).not.toHaveProperty("status");
     expect(log?.metadata).not.toHaveProperty("ocid");
+  });
+
+  it("rejects unsupported fields instead of silently accepting them", async () => {
+    const tor = await createTor({ status: "draft" });
+    const response = await request(app)
+      .put(`/api/admin/tors/${tor._id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: "published" });
+
+    expect(response.status).toBe(400);
+    expect((await Tor.findById(tor._id))?.status).toBe("draft");
   });
 });
 

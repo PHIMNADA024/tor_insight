@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { Notification } from "../models/notification.js";
 import { requireAuth } from "../middleware/auth.js";
+import { isObjectId } from "../middleware/validation.js";
 
 const router = Router();
 
@@ -11,6 +12,12 @@ const router = Router();
 router.get("/", requireAuth, async (req, res) => {
   try {
     const filter = typeof req.query.filter === "string" ? req.query.filter : undefined;
+    if (Object.values(req.query).some((value) => typeof value !== "string")) {
+      return res.status(400).json({ message: "กรุณาส่งค่าตัวกรองแต่ละรายการเพียงหนึ่งค่า" });
+    }
+    if (filter !== undefined && filter !== "unread" && filter !== "read") {
+      return res.status(400).json({ message: "ตัวกรองต้องเป็นรายการที่อ่านแล้วหรือยังไม่อ่าน" });
+    }
 
     const query: Record<string, unknown> = { userId: req.user!.id };
     if (filter === "unread") query.isRead = false;
@@ -38,6 +45,7 @@ router.get("/", requireAuth, async (req, res) => {
  */
 router.patch("/:id/read", requireAuth, async (req, res) => {
   try {
+    if (!isObjectId(req.params.id)) return res.status(400).json({ message: "รหัสการแจ้งเตือนไม่ถูกต้อง" });
     const notification = await Notification.findOne({
       _id: req.params.id,
       userId: req.user!.id,

@@ -188,7 +188,7 @@ describe("GET /api/stats/summary", () => {
     const res = await summary({ fiscalYear });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe("fiscalYear must be a whole number");
+    expect(res.body.message).toBe("ปีงบประมาณต้องเป็นจำนวนเต็มระหว่าง 1900 ถึง 2200");
   });
 });
 
@@ -279,6 +279,6 @@ describe("GET /api/stats/breakdown", () => {
     const res = await breakdown({ fiscalYear: "abc" });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe("fiscalYear must be a whole number");
+    expect(res.body.message).toBe("ปีงบประมาณต้องเป็นจำนวนเต็มระหว่าง 1900 ถึง 2200");
   });
 });

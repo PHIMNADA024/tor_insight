@@ -3,6 +3,7 @@ import { Tor, Feedback } from "../models/index.js";
 import { AdminActionLog } from "../models/adminActionLog.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
+import { isFiniteNumber, isObjectId, isRecord, parsePositiveInteger } from "../middleware/validation.js";
 
 const router = Router();
 
@@ -34,11 +35,28 @@ function escapeRegex(value: string) {
 router.get("/tors", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { category, search, status } = req.query;
-    const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(100, Number(req.query.limit) || 20);
+    if (Object.values(req.query).some((value) => typeof value !== "string")) {
+      return res.status(400).json({ message: "กรุณาส่งค่าตัวกรองแต่ละรายการเพียงหนึ่งค่า" });
+    }
+    const pageInput = parsePositiveInteger(req.query.page, 1_000_000);
+    const limitInput = parsePositiveInteger(req.query.limit);
+    if (req.query.page !== undefined && pageInput === undefined) {
+      return res.status(400).json({ message: "หมายเลขหน้าต้องเป็นจำนวนเต็มตั้งแต่ 1 ถึง 1,000,000" });
+    }
+    if (req.query.limit !== undefined && limitInput === undefined) {
+      return res.status(400).json({ message: "จำนวนรายการต่อหน้าต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป" });
+    }
+    const page = pageInput ?? 1;
+    const limit = Math.min(limitInput ?? 20, 100);
 
-    if (typeof status === "string" && status && !TOR_STATUSES.includes(status as (typeof TOR_STATUSES)[number])) {
-      return res.status(400).json({ message: "Invalid TOR status" });
+    if (status !== undefined && (typeof status !== "string" || !TOR_STATUSES.includes(status as (typeof TOR_STATUSES)[number]))) {
+      return res.status(400).json({ message: "สถานะ TOR ไม่ถูกต้อง" });
+    }
+    if (typeof search === "string" && search.length > 200) {
+      return res.status(400).json({ message: "คำค้นหาต้องมีความยาวไม่เกิน 200 ตัวอักษร" });
+    }
+    if (typeof category === "string" && category.length > 100) {
+      return res.status(400).json({ message: "หมวดหมู่ต้องมีความยาวไม่เกิน 100 ตัวอักษร" });
     }
 
     const filter: Record<string, unknown> = {};
@@ -149,9 +167,18 @@ router.get("/tors/stats", requireAuth, requireAdmin, async (_req, res) => {
 router.get("/tors/reported", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { category, search, status } = req.query;
+    if (Object.values(req.query).some((value) => typeof value !== "string")) {
+      return res.status(400).json({ message: "กรุณาส่งค่าตัวกรองแต่ละรายการเพียงหนึ่งค่า" });
+    }
 
-    if (typeof status === "string" && status && !TOR_STATUSES.includes(status as (typeof TOR_STATUSES)[number])) {
-      return res.status(400).json({ message: "Invalid TOR status" });
+    if (status !== undefined && (typeof status !== "string" || !TOR_STATUSES.includes(status as (typeof TOR_STATUSES)[number]))) {
+      return res.status(400).json({ message: "สถานะ TOR ไม่ถูกต้อง" });
+    }
+    if (typeof search === "string" && search.length > 200) {
+      return res.status(400).json({ message: "คำค้นหาต้องมีความยาวไม่เกิน 200 ตัวอักษร" });
+    }
+    if (typeof category === "string" && category.length > 100) {
+      return res.status(400).json({ message: "หมวดหมู่ต้องมีความยาวไม่เกิน 100 ตัวอักษร" });
     }
 
     const openFeedback = await Feedback.find({
@@ -196,6 +223,37 @@ router.get("/tors/reported", requireAuth, requireAdmin, async (req, res) => {
  */
 router.put("/tors/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
+    if (!isObjectId(req.params.id)) return res.status(400).json({ message: "รหัส TOR ไม่ถูกต้อง" });
+    if (!isRecord(req.body)) return res.status(400).json({ message: "ข้อมูลที่ส่งมาไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    const editable = new Set<string>(EDITABLE_FIELDS);
+    if (Object.keys(req.body).some((field) => !editable.has(field))) {
+      return res.status(400).json({ message: "มีข้อมูลบางส่วนที่ไม่รองรับ กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
+    for (const [field, value] of Object.entries(req.body)) {
+      if (field === "budgetAmount" || field === "tenderAmount") {
+        if (!isFiniteNumber(value, 0, 1_000_000_000_000_000)) {
+          return res.status(400).json({ message: "งบประมาณต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป" });
+        }
+      } else if (field === "fiscalYear") {
+        if (!isFiniteNumber(value, 1900, 2200) || !Number.isInteger(value)) {
+          return res.status(400).json({ message: "ปีงบประมาณต้องเป็นจำนวนเต็มระหว่าง 1900 ถึง 2200" });
+        }
+      } else {
+        const maxLength = field === "detailSummary" || field === "description" ? 10000 : field === "sourceUrl" ? 2048 : 300;
+        if (typeof value !== "string" || value.length > maxLength ||
+          (["title", "agency", "category"].includes(field) && value.trim().length === 0)) {
+          return res.status(400).json({ message: "ข้อมูลข้อความไม่ถูกต้องหรือยาวเกินกำหนด" });
+        }
+        if (field === "sourceUrl" && value !== "") {
+          try {
+            const url = new URL(value);
+            if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("unsupported protocol");
+          } catch {
+            return res.status(400).json({ message: "ลิงก์แหล่งที่มาต้องเป็นที่อยู่เว็บไซต์ที่ถูกต้อง" });
+          }
+        }
+      }
+    }
     const tor = await Tor.findById(req.params.id);
 
     if (!tor) {
@@ -241,6 +299,7 @@ router.put("/tors/:id", requireAuth, requireAdmin, async (req, res) => {
  */
 router.post("/tors/:id/publish", requireAuth, requireAdmin, async (req, res) => {
   try {
+    if (!isObjectId(req.params.id)) return res.status(400).json({ message: "รหัส TOR ไม่ถูกต้อง" });
     const tor = await Tor.findById(req.params.id);
 
     if (!tor) {
@@ -272,6 +331,7 @@ router.post("/tors/:id/publish", requireAuth, requireAdmin, async (req, res) => 
  */
 router.post("/tors/:id/archive", requireAuth, requireAdmin, async (req, res) => {
   try {
+    if (!isObjectId(req.params.id)) return res.status(400).json({ message: "รหัส TOR ไม่ถูกต้อง" });
     const tor = await Tor.findById(req.params.id);
 
     if (!tor) {
