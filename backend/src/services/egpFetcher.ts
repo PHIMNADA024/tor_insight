@@ -11,6 +11,7 @@ import { Tor } from "../models/index.js";
 import { NonRetryableError, sleep, withRetry } from "./http.js";
 import { withSyncLog, type SyncCounts, type SyncTrigger } from "./syncRun.js";
 import { readDeadline } from "./deadlineReader.js";
+import { safeFetch } from "./safeFetch.js";
 import { summarizeTorDocument } from "./torDocumentSummary.js";
 import { readWinners } from "./winnerReader.js";
 import { toArabicDigits } from "./thaiDigits.js";
@@ -143,8 +144,8 @@ function fileUrl(a: Announcement) {
 
 async function downloadPdf(url: string): Promise<Buffer> {
   await sleep(REQUEST_GAP_MS);
-  return withRetry(async () => {
-    const res = await fetch(url);
+  return withRetry(async () => { 
+    const res = await safeFetch(url);
     if (res.status >= 400 && res.status < 500) {
       throw new NonRetryableError(`PDF: HTTP ${res.status}`);
     }

@@ -5,6 +5,7 @@
  */
 import { Tor } from "../models/index.js";
 import { GEMINI_MODEL as MODEL, getGenAI as getClient, MAX_PDF_BYTES } from "./genai.js";
+import { isAllowedSourceUrl, readLimited, safeFetch } from "./safeFetch.js";
 import { NonRetryableError, withRetry } from "./http.js";
 import { toArabicDigitsOpt } from "./thaiDigits.js";
 
@@ -139,11 +140,13 @@ function buildPrompt(tor: any, hasDocument: boolean): string {
 async function fetchSourceDocument(url: string | undefined | null): Promise<Buffer | undefined> {
   if (!url) return undefined;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
-    if (!res.ok) return undefined;
-    const pdf = Buffer.from(await res.arrayBuffer());
-    return pdf.subarray(0, 4).toString("latin1") === "%PDF" && pdf.length <= MAX_PDF_BYTES ? pdf : undefined;
-  } catch {
+          // Only government sites, and never more than MAX_PDF_BYTES read (SSRF, memory).
+      if (!isAllowedSourceUrl(url)) return undefined;
+      const res = await safeFetch(url, { signal: AbortSignal.timeout(20_000) });
+      if (!res.ok) return undefined;
+      const pdf = await readLimited(res, MAX_PDF_BYTES);
+      return pdf && pdf.subarray(0, 4).toString("latin1") === "%PDF" ? pdf : undefined;
+  }catch {
     return undefined;
   }
 }
