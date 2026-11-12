@@ -77,6 +77,16 @@ describe("POST /api/auth/register", () => {
     expect(response.body.message).toBe("Name, email and password are required");
   });
 
+  it.each([
+    [{ name: "Valid Name", email: "not-an-email", password: "password123" }, "invalid email"],
+    [{ name: { value: "Name" }, email: "user@example.test", password: "password123" }, "non-string name"],
+    [{ name: "Valid Name", email: "user@example.test", password: "short" }, "short password"],
+    [{ name: "Valid Name", email: "user@example.test", password: "p".repeat(73) }, "overlong bcrypt password"],
+  ])("rejects %s during registration", async (payload) => {
+    const response = await request(app).post("/api/auth/register").send(payload);
+    expect(response.status).toBe(400);
+  });
+
   it("rejects an email that is already registered, ignoring email case", async () => {
     await createUser({ email: "registered@example.test" });
 
@@ -222,7 +232,7 @@ describe("password reset", () => {
   });
 
   it("accepts a valid reset token once and rejects its reuse", async () => {
-    const rawToken = "single-use-reset-token";
+    const rawToken = crypto.randomBytes(32).toString("hex");
     await User.create({
       name: "Reset User",
       email: "reset@example.test",
@@ -245,7 +255,7 @@ describe("password reset", () => {
   });
 
   it("rejects an expired reset token", async () => {
-    const rawToken = "expired-reset-token";
+    const rawToken = crypto.randomBytes(32).toString("hex");
     await User.create({
       name: "Expired Reset",
       email: "expired-reset@example.test",

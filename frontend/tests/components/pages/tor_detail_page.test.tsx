@@ -178,25 +178,37 @@ describe("TOR detail page", () => {
   });
 
   describe("documents", () => {
-    it("lists each document with its label and format, opening the agency's file in a new tab", async () => {
+    it("lists documents and asks for confirmation before opening an agency file", async () => {
+      const open = jest.spyOn(window, "open").mockImplementation(() => null);
       await renderPage();
       const docs = within(section("เอกสารประกอบ"));
-      const links = docs.getAllByRole("link");
+      const links = docs.getAllByRole("button");
 
       expect(links).toHaveLength(3);
       expect(links[0]).toHaveTextContent("เอกสาร TOR");
       expect(links[0]).toHaveTextContent("pdf");
-      expect(links[0]).toHaveAttribute("href", "https://egp2.bangkok.go.th/api/file/2/tor.pdf");
-      expect(links[0]).toHaveAttribute("target", "_blank");
-      expect(links[0]).toHaveAttribute("rel", "noopener noreferrer");
       expect(links[1]).toHaveTextContent("ประกาศเชิญชวน");
+
+      fireEvent.click(links[0]);
+      expect(screen.getByRole("alertdialog")).toHaveTextContent("egp2.bangkok.go.th");
+      expect(open).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "ยกเลิก" }));
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+
+      fireEvent.click(links[0]);
+      fireEvent.click(screen.getByRole("button", { name: "ไปยังเว็บไซต์ภายนอก" }));
+      expect(open).toHaveBeenCalledWith(
+        "https://egp2.bangkok.go.th/api/file/2/tor.pdf",
+        "_blank",
+        "noopener,noreferrer",
+      );
     });
 
     it("names an attachment by its own title", async () => {
       await renderPage();
       const docs = within(section("เอกสารประกอบ"));
 
-      expect(docs.getByRole("link", { name: /แบบรูปรายการ/ })).toHaveTextContent("zip");
+      expect(docs.getByRole("button", { name: /แบบรูปรายการ/ })).toHaveTextContent("zip");
     });
 
     it.each([
@@ -212,14 +224,25 @@ describe("TOR detail page", () => {
   });
 
   describe("source and actions", () => {
-    it("shows the source URL and opens it in a new tab", async () => {
+    it("shows the source URL and requires confirmation before opening it", async () => {
       const open = jest.spyOn(window, "open").mockImplementation(() => null);
       await renderPage();
       const source = within(section("ข้อมูลแหล่งที่มา"));
 
       expect(source.getByText(TOR.sourceUrl)).toBeInTheDocument();
       fireEvent.click(source.getByRole("button", { name: /เปิดแหล่งที่มาต้นฉบับ/ }));
+      expect(screen.getByRole("alertdialog")).toHaveTextContent("egp2.bangkok.go.th");
+      expect(open).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "ไปยังเว็บไซต์ภายนอก" }));
       expect(open).toHaveBeenCalledWith(TOR.sourceUrl, "_blank", "noopener,noreferrer");
+    });
+
+    it("does not offer unsafe external protocols", async () => {
+      await renderPage({ ...TOR, sourceUrl: "javascript:alert(1)" });
+      const source = within(section("ข้อมูลแหล่งที่มา"));
+
+      fireEvent.click(source.getByRole("button", { name: /เปิดแหล่งที่มาต้นฉบับ/ }));
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     });
 
     it("hides the open button when there is no source URL", async () => {

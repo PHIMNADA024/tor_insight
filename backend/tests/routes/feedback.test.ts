@@ -115,7 +115,7 @@ describe("POST /api/feedback validation", () => {
       torId: "not-an-object-id",
     });
     expect(response.status).toBe(400);
-    expect(response.body.message).toBe("Invalid TOR id");
+    expect(response.body.message).toBe("รหัส TOR ไม่ถูกต้อง");
   });
 
   it("accepts a description at both length boundaries", async () => {

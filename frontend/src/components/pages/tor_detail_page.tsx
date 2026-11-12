@@ -89,11 +89,6 @@ function formatMoney(value?: number): string {
   return value == null ? NO_DATA : value.toLocaleString("th-TH");
 }
 
-// Opens the agency's own page directly rather than proxying through our backend.
-function openExternal(url?: string) {
-  if (url) window.open(url, "_blank", "noopener,noreferrer");
-}
-
 const DOCUMENT_LABELS: Record<TorDocument["type"], string> = {
   tor: "เอกสาร TOR",
   invitation: "ประกาศเชิญชวน",
@@ -245,6 +240,7 @@ export function TorPage({ id }: { id: string }) {
   const router = useRouter();
   const [tor, setTor] = useState<TorDetail | null>(null);
   const [state, setState] = useState<LoadState>("loading");
+  const [externalTarget, setExternalTarget] = useState<{ url: string; label: string; host: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -271,6 +267,24 @@ export function TorPage({ id }: { id: string }) {
       cancelled = true;
     };
   }, [id]);
+
+  function requestExternalNavigation(url: string | undefined, label: string) {
+    if (!url) return;
+    try {
+      const destination = new URL(url);
+      if ((destination.protocol !== "https:" && destination.protocol !== "http:") ||
+        destination.username || destination.password) return;
+      setExternalTarget({ url: destination.href, label, host: destination.hostname });
+    } catch {
+      // Ignore malformed URLs from upstream source data.
+    }
+  }
+
+  function confirmExternalNavigation() {
+    if (!externalTarget) return;
+    window.open(externalTarget.url, "_blank", "noopener,noreferrer");
+    setExternalTarget(null);
+  }
 
   const backButton = (
     <button
@@ -495,11 +509,10 @@ export function TorPage({ id }: { id: string }) {
                 <ul className="mt-3 space-y-2">
                   {tor.documents.map((doc) => (
                     <li key={doc.url}>
-                      <a
-                        href={doc.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
+                      <button
+                        type="button"
+                        onClick={() => requestExternalNavigation(doc.url, documentLabel(doc))}
+                        className="flex items-center cursor-pointer gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
                       >
                         <FileText className="size-4 shrink-0 text-primary" />
                         <span className="min-w-0 flex-1 truncate">{documentLabel(doc)}</span>
@@ -507,7 +520,7 @@ export function TorPage({ id }: { id: string }) {
                           <span className="text-xs uppercase text-muted-foreground">{doc.format}</span>
                         )}
                         <Download className="size-3.5 shrink-0 text-muted-foreground" />
-                      </a>
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -521,7 +534,7 @@ export function TorPage({ id }: { id: string }) {
               {tor.sourceUrl ? (
                 <>
                   <p className="break-all text-xs text-primary">{tor.sourceUrl}</p>
-                  <Button variant="outline" size="sm" className="mt-3" onClick={() => openExternal(tor.sourceUrl)}>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => requestExternalNavigation(tor.sourceUrl, "แหล่งที่มาต้นฉบับ")}>
                     เปิดแหล่งที่มาต้นฉบับ <ExternalLink className="ml-1 size-3.5" />
                   </Button>
                 </>
@@ -546,6 +559,30 @@ export function TorPage({ id }: { id: string }) {
           </div>
         </div>
       </main>
+      {externalTarget && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setExternalTarget(null)}
+        >
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="external-link-title"
+            aria-describedby="external-link-description"
+            className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="external-link-title" className="text-lg font-semibold">กำลังออกจาก TOR Insight</h2>
+            <p id="external-link-description" className="mt-2 text-sm text-muted-foreground">
+              คุณกำลังเปิด{externalTarget.label}บนเว็บไซต์ภายนอก ({externalTarget.host}) เว็บไซต์นั้นอยู่นอกการควบคุมของ TOR Insight
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setExternalTarget(null)}>ยกเลิก</Button>
+              <Button onClick={confirmExternalNavigation}>ไปยังเว็บไซต์ภายนอก</Button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

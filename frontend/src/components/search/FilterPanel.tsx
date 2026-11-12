@@ -94,6 +94,12 @@ export function FilterPanel({
     onChange({ ...value, [key]: fieldValue });
   }
 
+  function setBudgetField(key: "budgetMin" | "budgetMax", input: string) {
+    // Budgets cannot be negative. Keep invalid keystrokes (such as '-') out
+    // of the controlled value; allow a single decimal point while typing.
+    if (/^\d*(?:\.\d*)?$/.test(input)) setField(key, input);
+  }
+
   return (
     <aside className="h-fit rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
       <div className="mb-4 flex items-center justify-between">
@@ -159,20 +165,22 @@ export function FilterPanel({
 
           <div className="grid grid-cols-2 gap-2">
             <Input
-              type="number"
-              min={0}
+              type="text"
+              inputMode="decimal"
+              pattern="[0-9]*([.][0-9]*)?"
               placeholder="ต่ำสุด"
               className="h-9"
               value={value.budgetMin}
-              onChange={(e) => setField("budgetMin", e.target.value)}
+              onChange={(e) => setBudgetField("budgetMin", e.target.value)}
             />
             <Input
-              type="number"
-              min={0}
+              type="text"
+              inputMode="decimal"
+              pattern="[0-9]*([.][0-9]*)?"
               placeholder="สูงสุด"
               className="h-9"
               value={value.budgetMax}
-              onChange={(e) => setField("budgetMax", e.target.value)}
+              onChange={(e) => setBudgetField("budgetMax", e.target.value)}
             />
           </div>
         </div>

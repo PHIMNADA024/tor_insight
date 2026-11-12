@@ -6,6 +6,7 @@ import { Notification } from "../models/notification.js";
 import { User } from "../models/user.js";
 import { requireAuth } from "../middleware/auth.js";
 import { sendNewFeedbackAdminEmail } from "../services/email.js";
+import { isObjectId, isRecord } from "../middleware/validation.js";
 
 const router = Router();
 
@@ -86,6 +87,10 @@ async function notifyAdminsOfNewFeedback(
  */
 router.post("/", requireAuth, async (req, res) => {
   try {
+    if (!isRecord(req.body)) return res.status(400).json({ message: "ข้อมูลที่ส่งมาไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    if (Object.keys(req.body).some((field) => !["category", "description", "torId"].includes(field))) {
+      return res.status(400).json({ message: "มีข้อมูลบางส่วนที่ไม่รองรับ กรุณาตรวจสอบแล้วลองอีกครั้ง" });
+    }
     const { category, description, torId } = req.body;
 
     // --- Required fields ---
@@ -124,8 +129,8 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
 
-    if (torId !== undefined && (typeof torId !== "string" || !/^[0-9a-fA-F]{24}$/.test(torId))) {
-      return res.status(400).json({ message: "Invalid TOR id" });
+    if (torId !== undefined && !isObjectId(torId)) {
+      return res.status(400).json({ message: "รหัส TOR ไม่ถูกต้อง" });
     }
 
     const linkedTor = typeof torId === "string"

@@ -268,17 +268,29 @@ describe("GET /api/tors", () => {
   describe("invalid input", () => {
     it.each([
       [{ sort: "price" }, "sort must be one of: date, budget, relevance"],
-      [{ fiscalYear: "abc" }, "fiscalYear must be a number"],
-      [{ budgetMin: "x" }, "budgetMin must be a number"],
-      [{ budgetMax: "x" }, "budgetMax must be a number"],
-      [{ budgetMin: 5, budgetMax: 1 }, "budgetMin must not exceed budgetMax"],
-      [{ page: "two" }, "page must be a number"],
-      [{ limit: "ten" }, "limit must be a number"],
+      [{ fiscalYear: "abc" }, "ปีงบประมาณต้องเป็นจำนวนเต็มระหว่าง 1900 ถึง 2200"],
+      [{ fiscalYear: "2026.5" }, "ปีงบประมาณต้องเป็นจำนวนเต็มระหว่าง 1900 ถึง 2200"],
+      [{ fiscalYear: "2026.0" }, "ปีงบประมาณต้องเป็นจำนวนเต็มระหว่าง 1900 ถึง 2200"],
+      [{ budgetMin: "x" }, "กรุณากรอกงบประมาณขั้นต่ำเป็นตัวเลขตั้งแต่ 0 ขึ้นไป"],
+      [{ budgetMin: "-1" }, "กรุณากรอกงบประมาณขั้นต่ำเป็นตัวเลขตั้งแต่ 0 ขึ้นไป"],
+      [{ budgetMin: "--" }, "กรุณากรอกงบประมาณขั้นต่ำเป็นตัวเลขตั้งแต่ 0 ขึ้นไป"],
+      [{ budgetMax: "x" }, "กรุณากรอกงบประมาณขั้นสูงเป็นตัวเลขตั้งแต่ 0 ขึ้นไป"],
+      [{ budgetMin: 5, budgetMax: 1 }, "งบประมาณขั้นต่ำต้องไม่มากกว่างบประมาณขั้นสูง"],
+      [{ page: "two" }, "หมายเลขหน้าต้องเป็นจำนวนเต็มตั้งแต่ 1 ถึง 1,000,000"],
+      [{ page: 0 }, "หมายเลขหน้าต้องเป็นจำนวนเต็มตั้งแต่ 1 ถึง 1,000,000"],
+      [{ limit: "ten" }, "จำนวนรายการต่อหน้าต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป"],
+      [{ limit: 1.5 }, "จำนวนรายการต่อหน้าต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป"],
       [{ bidding: "soon" }, "bidding must be one of: open, upcoming, closed"],
     ])("rejects %j with 400", async (query, message) => {
       const { res } = await search(query);
       expect(res.status).toBe(400);
       expect(res.body.message).toBe(message);
+    });
+
+    it("rejects repeated query values instead of silently ignoring them", async () => {
+      const res = await request(app).get("/api/tors?keyword=one&keyword=two");
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe("กรุณาส่งค่าตัวกรองแต่ละรายการเพียงหนึ่งค่า");
     });
   });
 });

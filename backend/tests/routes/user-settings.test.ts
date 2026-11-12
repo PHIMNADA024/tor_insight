@@ -114,6 +114,20 @@ describe("PUT /api/users/me", () => {
       notifyByEmail: false,
     });
   });
+
+  it.each([
+    [{ interestCriteria: { minBudget: 500, maxBudget: 100 } }, "reversed budgets"],
+    [{ interestCriteria: { minBudget: "100" } }, "string budget"],
+    [{ notifyByEmail: "false" }, "string boolean"],
+    [{ interestCriteria: { keywords: [1] } }, "non-string list item"],
+    [{ role: "admin" }, "unsupported field"],
+  ])("rejects invalid profile input: %s", async (payload) => {
+    const response = await request(app)
+      .put("/api/users/me")
+      .set("Authorization", `Bearer ${token}`)
+      .send(payload);
+    expect(response.status).toBe(400);
+  });
 });
 
 describe("PUT /api/users/change-password", () => {
