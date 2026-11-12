@@ -48,7 +48,9 @@ beforeEach(async () => {
   token = signAccessToken({ id: userId.toString(), role: user.role });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Let the admin notifications sent in the background finish before the next test.
+  await new Promise((resolve) => setTimeout(resolve, 100));
   jest.restoreAllMocks();
 });
 
