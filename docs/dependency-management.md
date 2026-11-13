@@ -44,7 +44,7 @@ Rules:
 1. **Same deadline for dev dependencies.** Packages used only for testing, linting or building have the same deadlines. They run on developer machines and in CI, so they are still part of the supply chain.
 2. **Preferred fix.** Upgrade to a patched version: merge the Dependabot PR or run `npm audit fix`.
 3. **Breaking upgrade.** If the patch needs a breaking upgrade, do the upgrade and fix the code. Do not use `npm audit fix --force` blindly, because it can downgrade packages.
-4. **Patch only in a transitive dependency.** Pin it with `overrides` in `package.json`, scoped to the parent package. Remove the override once the parent ships the fix.
+4. **Patch only in a transitive dependency.** Pin it with `overrides` in `package.json`. If another package still needs an older major version, override only the vulnerable range (for example `"minimatch@>=7.0.0 <11.0.1"`). Don't nest overrides under a parent package: the npm 10 that ships with Node 22 then rejects the lockfile in `npm ci`. Remove the override once the parent ships the fix.
 5. **No patched version exists.** Replace or remove the component, or mitigate the issue. If none of these is practical, record an exception below with the reason and a review date. Review open exceptions at least every 30 days.
 6. **Missed deadline.** Raise it at the next team meeting and record it as an exception.
 
@@ -93,7 +93,7 @@ After: 0 runtime vulnerabilities in both packages. The only remaining finding is
 | Backend  | mongoose                        | 9.9.4 → 9.12.1             | High: prototype pollution, `sanitizeFilter` not applied               |
 | Backend  | body-parser, follow-redirects   | 2.3.0 → 2.4.0, 1.16.1 → 1.16.3 | High                                                             |
 | Backend  | qs, ip-address                  | 6.15.3 → 6.17.1, 10.7.0 → 10.7.6 | Moderate                                                       |
-| Both     | glob, minimatch (via jest)      | 13.0.6 / 10.2.6 → 14.0.6 / 11.0.8 | Moderate. Pinned with scoped `overrides` because Jest 30.5.2 still requests the old ranges. |
+| Both     | glob, minimatch (via jest)      | 13.0.6 / 10.2.6 → 14.0.6 / 11.0.8 | Moderate. Pinned with `overrides` because Jest 30.5.2 still requests the old ranges. In the frontend, only minimatch 7–11.0.0 is overridden, because ESLint still needs minimatch 3. |
 
 Notes:
 
