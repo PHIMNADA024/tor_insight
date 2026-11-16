@@ -23,6 +23,8 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       - run: npm ci
+      # Fail on known high/critical vulnerabilities in runtime dependencies.
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm test
       - run: npm run build
 
@@ -42,6 +44,29 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - run: npm ci
+      # Fail on known high/critical vulnerabilities in runtime dependencies.
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  sbom:
+    name: SBOM (CycloneDX)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # npm sbom describes the installed tree, so install first.
+      - run: npm ci && npm run sbom
+        working-directory: frontend
+      - run: npm ci && npm run sbom
+        working-directory: backend
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom/*.cdx.json

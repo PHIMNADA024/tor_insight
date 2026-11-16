@@ -2,6 +2,10 @@
  * Tests are TypeScript compiled by SWC to CommonJS, so Jest needs no ESM flags.
  * SWC strips types without checking them; `npx tsc -p tests` type-checks the tests.
  *
+ * `npm test` runs Jest with `--experimental-vm-modules`: the MongoDB driver (7.7+) loads
+ * `os` with a dynamic `import()`, which Jest can only run with that flag. Without it the
+ * driver sends an incomplete handshake and every database test times out.
+ *
  * @type {import("jest").Config}
  */
 export default {
