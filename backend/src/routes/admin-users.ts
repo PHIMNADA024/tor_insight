@@ -1,4 +1,5 @@
 import { Router } from "express";
+import mongoose from "mongoose";
 import { User } from "../models/user.js";
 import { AdminActionLog } from "../models/adminActionLog.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -148,16 +149,30 @@ router.delete("/users/:id", requireAuth, requireAdmin, async (req, res) => {
       return res.status(400).json({ message: "You cannot delete your own account" });
     }
 
-    await AdminActionLog.create({
-      actorId: req.user!.id,
-      action: "user.delete",
-      targetType: "User",
-      targetId: user._id,
-      metadata: { name: user.name, email: user.email, role: user.role },
-    });
-    await Feedback.deleteMany({ userId: user._id });
-    await Notification.deleteMany({ userId: user._id });
-    await user.deleteOne();
+    // All four writes succeed together or none of them do, so a failure halfway
+    // can't leave a deleted user's feedback behind or a log entry for a delete that never happened.
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await AdminActionLog.create(
+          [
+            {
+              actorId: req.user!.id,
+              action: "user.delete",
+              targetType: "User",
+              targetId: user._id,
+              metadata: { name: user.name, email: user.email, role: user.role },
+            },
+          ],
+          { session },
+        );
+        await Feedback.deleteMany({ userId: user._id }, { session });
+        await Notification.deleteMany({ userId: user._id }, { session });
+        await User.deleteOne({ _id: user._id }, { session });
+      });
+    } finally {
+      await session.endSession();
+    }
 
     return res.json({ message: "User deleted" });
   } catch (error) {

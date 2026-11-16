@@ -1,10 +1,12 @@
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 
-let mongo: MongoMemoryServer | undefined;
+// A one-node replica set instead of a single server, because MongoDB only
+// allows transactions on a replica set (Atlas is always one).
+let mongo: MongoMemoryReplSet | undefined;
 
 export async function connectTestDatabase() {
-  mongo = await MongoMemoryServer.create();
+  mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
   await mongoose.connect(mongo.getUri());
 }
 
