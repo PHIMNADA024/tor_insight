@@ -13,7 +13,19 @@ describe("TOTP MFA utilities", () => {
 
     expect(encrypted).not.toContain(secret);
     expect(decryptMfaSecret(encrypted)).toBe(secret);
-    expect(() => decryptMfaSecret(`${encrypted.slice(0, -1)}A`)).toThrow();
+
+    const [iv, tag, ciphertext] = encrypted.split(".");
+
+    const flipFirstByte = (part: string) => {
+      const bytes = Buffer.from(part, "base64url");
+      bytes[0] ^= 0xff;
+      return bytes.toString("base64url");
+    };
+
+    // Tampered ciphertext, auth tag, and IV must each fail authentication.
+    expect(() => decryptMfaSecret([iv, tag, flipFirstByte(ciphertext)].join("."))).toThrow();
+    expect(() => decryptMfaSecret([iv, flipFirstByte(tag), ciphertext].join("."))).toThrow();
+    expect(() => decryptMfaSecret([flipFirstByte(iv), tag, ciphertext].join("."))).toThrow();
   });
 
   it("accepts a current TOTP time step once and prevents replay", async () => {
