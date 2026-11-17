@@ -24,6 +24,16 @@ export const otpLimiter = rateLimit({
   message: { message: "Too many attempts, please try again later" },
 });
 
+// MFA enrollment is a separate step from password authentication; share its
+// own bucket instead of charging both /login and /mfa/setup to authLimiter.
+export const mfaSetupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many authenticator setup attempts, please try again later" },
+});
+
 export const searchLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 60,
