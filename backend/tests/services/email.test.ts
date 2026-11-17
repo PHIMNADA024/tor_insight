@@ -55,6 +55,7 @@ const TOR = {
 const SENDERS: [string, () => Promise<void>][] = [
   ["sendVerificationEmail", () => email.sendVerificationEmail(TO, "123456")],
   ["sendPasswordResetEmail", () => email.sendPasswordResetEmail(TO, "http://localhost:3000/reset?token=abc")],
+  ["sendPasswordChangedEmail", () => email.sendPasswordChangedEmail(TO, "สมชาย")],
   ["sendTorMatchEmail", () => email.sendTorMatchEmail(TO, "สมชาย", [TOR])],
   ["sendFeedbackResolvedEmail", () => email.sendFeedbackResolvedEmail(TO, "สมชาย", "ข้อความ", "คำตอบ")],
   ["sendNewFeedbackAdminEmail", () => email.sendNewFeedbackAdminEmail(TO, "สมชาย", "ปัญหา", "ข้อความ")],
@@ -120,6 +121,17 @@ describe("email service", () => {
       await email.sendPasswordResetEmail(TO, LINK);
 
       expect(sentMail().subject).not.toContain("abc123");
+    });
+  });
+
+  describe("sendPasswordChangedEmail", () => {
+    it("notifies the account holder that their password changed and sessions were revoked", async () => {
+      await email.sendPasswordChangedEmail(TO, `<script>${SCRIPT}</script>`);
+
+      const mail = sentMail();
+      expect(mail.subject).toBe("TOR Insight - Password changed");
+      expect(mail.html).toContain("All existing sessions have been signed out");
+      expect(mail.html).not.toContain(SCRIPT);
     });
   });
 
