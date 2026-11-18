@@ -221,6 +221,11 @@ export default function AccountSettingsPage() {
             setCurrentPassword("");
             setNewPassword("");
             setConfirmNewPassword("");
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            sessionStorage.removeItem("token");
+            sessionStorage.removeItem("user");
+            router.replace("/login?passwordChanged=1");
         } catch {
             setPasswordError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
         } finally {

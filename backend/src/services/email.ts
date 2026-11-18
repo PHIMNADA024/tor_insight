@@ -73,6 +73,22 @@ export async function sendPasswordResetEmail(email: string, resetLink: string) {
   });
 }
 
+export async function sendPasswordChangedEmail(email: string, name: string) {
+  await transporter.sendMail({
+    from: `"TOR Insight" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: "TOR Insight - Password changed",
+    html: `
+      <div>
+        <h2>TOR Insight</h2>
+        <p>Hello ${escapeHtml(name)},</p>
+        <p>The password for your account was changed or reset. All existing sessions have been signed out.</p>
+        <p>If you did not make this change, contact the site administrator immediately.</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendTorMatchEmail(
   email: string,
   name: string,

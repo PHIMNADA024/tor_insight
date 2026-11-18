@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
 type AuthUser = {
   id: string;
   name: string;
@@ -45,7 +47,19 @@ export function useAuth() {
     return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    const token = localStorage.getItem("token") ?? sessionStorage.getItem("token");
+    if (token) {
+      try {
+        await fetch(`${API_URL}/api/auth/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(3_000),
+        });
+      } catch {
+        // Local logout still proceeds if the browser cannot start the request.
+      }
+    }
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     sessionStorage.removeItem("token");

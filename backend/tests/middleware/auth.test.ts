@@ -5,7 +5,8 @@ import request from "supertest";
 import { User } from "../../src/models/user.js";
 import { requireAuth } from "../../src/middleware/auth.js";
 import { requireAdmin } from "../../src/middleware/requireAdmin.js";
-import { signAccessToken } from "../../src/services/token.js";
+import authRoutes from "../../src/routes/auth.js";
+import { signAccessToken, signMfaSetupToken } from "../../src/services/token.js";
 import {
   clearTestDatabase,
   connectTestDatabase,
@@ -13,6 +14,8 @@ import {
 } from "../helpers/database.js";
 
 const app = express();
+app.use(express.json());
+app.use(authRoutes);
 app.get("/protected", requireAuth, (req, res) => res.json({ user: req.user }));
 app.get("/admin", requireAuth, requireAdmin, (_req, res) => res.json({ ok: true }));
 
@@ -81,13 +84,55 @@ describe("requireAuth", () => {
   it("rejects a token issued before the user's password changed", async () => {
     const user = await createUser({ passwordChangedAt: new Date() });
     const token = jwt.sign(
-      { id: user._id.toString(), role: user.role, iat: Math.floor(Date.now() / 1000) - 60 },
+      { id: user._id.toString(), role: user.role, tokenVersion: 0, purpose: "access", iat: Math.floor(Date.now() / 1000) - 60 },
       secret,
+      { algorithm: "HS256" },
     );
 
     const response = await request(app).get("/protected").set("Authorization", `Bearer ${token}`);
     expect(response.status).toBe(401);
     expect(response.body.message).toBe("Session expired, please log in again");
+  });
+
+  it("rejects tokens signed with an algorithm other than HS256", async () => {
+    const user = await createUser();
+    const token = jwt.sign(
+      { id: user._id.toString(), role: user.role, tokenVersion: 0, purpose: "access" },
+      secret,
+      { algorithm: "HS384" },
+    );
+
+    const response = await request(app).get("/protected").set("Authorization", `Bearer ${token}`);
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects an MFA enrollment token as an application access token", async () => {
+    const user = await createUser();
+    const token = signMfaSetupToken({ id: user._id.toString(), tokenVersion: 0 });
+
+    const response = await request(app).get("/protected").set("Authorization", `Bearer ${token}`);
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects a session after 30 minutes without activity", async () => {
+    const user = await createUser();
+    user.lastActivityAt = new Date(Date.now() - 31 * 60 * 1000);
+    await user.save();
+    const token = signAccessToken({ id: user._id.toString(), role: user.role });
+
+    const response = await request(app).get("/protected").set("Authorization", `Bearer ${token}`);
+    expect(response.status).toBe(401);
+    expect(response.body.message).toBe("Session expired due to inactivity");
+  });
+
+  it("revokes all access tokens when the user logs out", async () => {
+    const user = await createUser();
+    const token = signAccessToken({ id: user._id.toString(), role: user.role });
+
+    const logout = await request(app).post("/logout").set("Authorization", `Bearer ${token}`);
+    expect(logout.status).toBe(200);
+    const protectedResponse = await request(app).get("/protected").set("Authorization", `Bearer ${token}`);
+    expect(protectedResponse.status).toBe(401);
   });
 });
 

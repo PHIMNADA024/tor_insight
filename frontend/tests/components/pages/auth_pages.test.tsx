@@ -76,6 +76,54 @@ describe("authentication pages", () => {
     expect(await screen.findByText("Invalid email or password")).toBeInTheDocument();
   });
 
+  it("requires TOTP enrollment before storing a new user's access token", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ mfaSetupRequired: true, setupToken: "setup-token" }, 202))
+      .mockResolvedValueOnce(jsonResponse({ secret: "BASE32SECRET", otpauthUri: "otpauth://totp/test" }))
+      .mockResolvedValueOnce(jsonResponse({
+        token: "mfa-access-token",
+        user: { id: "user-1", name: "Test User", email: "user@example.test", role: "end_user" },
+      }));
+
+    render(<LoginPage />);
+    fireEvent.change(screen.getByLabelText("อีเมล"), { target: { value: "user@example.test" } });
+    fireEvent.change(screen.getByLabelText("รหัสผ่าน"), { target: { value: "correct-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "เข้าสู่ระบบ" }));
+
+    expect(await screen.findByText("BASE32SECRET")).toBeInTheDocument();
+    expect(sessionStorage.getItem("token")).toBeNull();
+    fireEvent.change(screen.getByLabelText("รหัส authenticator 6 หลัก"), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "เปิดใช้ MFA และเข้าสู่ระบบ" }));
+
+    await waitFor(() => expect(sessionStorage.getItem("token")).toBe("mfa-access-token"));
+    expect(fetchMock.mock.calls[2][1]?.headers).toMatchObject({ Authorization: "Bearer setup-token" });
+  });
+
+  it("verifies a TOTP login challenge before accepting the access token", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ mfaRequired: true, challengeToken: "a".repeat(64) }, 202))
+      .mockResolvedValueOnce(jsonResponse({
+        token: "two-factor-token",
+        user: { id: "user-1", name: "Test User", email: "user@example.test", role: "end_user" },
+      }));
+
+    render(<LoginPage />);
+    fireEvent.change(screen.getByLabelText("อีเมล"), { target: { value: "user@example.test" } });
+    fireEvent.change(screen.getByLabelText("รหัสผ่าน"), { target: { value: "correct-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "เข้าสู่ระบบ" }));
+
+    const code = await screen.findByLabelText("รหัส authenticator 6 หลัก");
+    expect(sessionStorage.getItem("token")).toBeNull();
+    fireEvent.change(code, { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "ยืนยันและเข้าสู่ระบบ" }));
+
+    await waitFor(() => expect(sessionStorage.getItem("token")).toBe("two-factor-token"));
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({
+      challengeToken: "a".repeat(64),
+      code: "123456",
+    });
+  });
+
   it("shows the suspension message for a disabled account", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ message: "This account has been disabled" }, 403));
     render(<LoginPage />);

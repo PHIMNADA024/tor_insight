@@ -1,12 +1,14 @@
 import express from "express";
+import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import request from "supertest";
 import { AdminActionLog } from "../../src/models/adminActionLog.js";
 import { Feedback } from "../../src/models/feedback.js";
 import { Notification } from "../../src/models/notification.js";
 import { User } from "../../src/models/user.js";
+import { requireAuth } from "../../src/middleware/auth.js";
 import adminUserRoutes from "../../src/routes/admin-users.js";
-import { sendAccountDisabledEmail } from "../../src/services/email.js";
+import { sendAccountDisabledEmail, sendPasswordResetEmail } from "../../src/services/email.js";
 import { signAccessToken } from "../../src/services/token.js";
 import {
   clearTestDatabase,
@@ -26,6 +28,7 @@ jest.mock("../../src/services/email.js", () => ({
 const app = express();
 app.use(express.json());
 app.use("/api/admin", adminUserRoutes);
+app.get("/session-check", requireAuth, (_req, res) => res.json({ ok: true }));
 
 const sendDisabledEmailMock = sendAccountDisabledEmail as jest.MockedFunction<typeof sendAccountDisabledEmail>;
 let adminId: mongoose.Types.ObjectId;
@@ -60,6 +63,8 @@ beforeEach(async () => {
   sendDisabledEmailMock.mockClear();
 
   const admin = await createUser({ email: "admin-users@example.test", role: "admin" });
+  admin.passwordHash = await bcrypt.hash("admin-password", 4);
+  await admin.save();
   const regular = await createUser({ email: "regular-users@example.test" });
   adminId = admin._id;
   adminToken = signAccessToken({ id: adminId.toString(), role: admin.role });
@@ -148,10 +153,23 @@ describe("PATCH /api/admin/users/:id/disable and enable", () => {
 });
 
 describe("DELETE /api/admin/users/:id", () => {
+  it("requires the current administrator password", async () => {
+    const user = await createUser();
+    const response = await request(app)
+      .delete(`/api/admin/users/${user._id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ currentPassword: "wrong-password" });
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toBe("Current password is incorrect");
+    expect(await User.exists({ _id: user._id })).not.toBeNull();
+  });
+
   it("rejects deleting the current admin's own account", async () => {
     const response = await request(app)
       .delete(`/api/admin/users/${adminId}`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ currentPassword: "admin-password" });
 
     expect(response.status).toBe(400);
     expect(response.body.message).toBe("You cannot delete your own account");
@@ -174,7 +192,8 @@ describe("DELETE /api/admin/users/:id", () => {
 
     const response = await request(app)
       .delete(`/api/admin/users/${user._id}`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ currentPassword: "admin-password" });
 
     expect(response.status).toBe(200);
     expect(response.body.message).toBe("User deleted");
@@ -188,5 +207,59 @@ describe("DELETE /api/admin/users/:id", () => {
       targetType: "User",
       metadata: { name: user.name, email: user.email, role: user.role },
     });
+  });
+});
+
+describe("POST /api/admin/users/:id/password-reset", () => {
+  it("sends an expiring reset link and records the administrative action without handling a password", async () => {
+    const user = await createUser({ email: "reset-target@example.test" });
+    const original = await User.findById(user._id).select("+passwordHash");
+    const response = await request(app)
+      .post(`/api/admin/users/${user._id}/password-reset`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.message).toBe("Password reset instructions sent");
+    expect(sendPasswordResetEmail).toHaveBeenCalledWith(
+      user.email,
+      expect.stringMatching(/^http:\/\/localhost:3000\/reset-password\?token=[a-f0-9]{64}&email=/),
+    );
+    const updated = await User.findById(user._id).select("+passwordResetToken +passwordResetExpires +passwordHash");
+    expect(updated?.passwordResetToken).toMatch(/^[a-f0-9]{64}$/);
+    expect(updated?.passwordResetExpires?.getTime()).toBeGreaterThan(Date.now());
+    expect(updated?.passwordHash).toBe(original?.passwordHash);
+    expect(await AdminActionLog.exists({ action: "user.password_reset", targetId: user._id })).not.toBeNull();
+  });
+});
+
+describe("administrator session revocation", () => {
+  it("revokes a user's sessions without disabling the account", async () => {
+    const target = await createUser();
+    const targetToken = signAccessToken({ id: target._id.toString(), role: target.role });
+
+    const response = await request(app)
+      .post(`/api/admin/users/${target._id}/sessions/revoke`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect((await User.findById(target._id))?.status).toBe("active");
+    expect((await User.findById(target._id))?.tokenVersion).toBe(1);
+    expect(await AdminActionLog.exists({ action: "user.sessions_revoke", targetId: target._id })).not.toBeNull();
+    expect((await request(app).get("/session-check").set("Authorization", `Bearer ${targetToken}`)).status).toBe(401);
+  });
+
+  it("revokes sessions for all accounts and invalidates the acting admin's session", async () => {
+    const target = await createUser();
+    const targetToken = signAccessToken({ id: target._id.toString(), role: target.role });
+
+    const response = await request(app)
+      .post("/api/admin/users/sessions/revoke-all")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.accountsAffected).toBe(3);
+    expect((await request(app).get("/api/admin/users").set("Authorization", `Bearer ${adminToken}`)).status).toBe(401);
+    expect((await request(app).get("/session-check").set("Authorization", `Bearer ${targetToken}`)).status).toBe(401);
+    expect(await AdminActionLog.exists({ action: "users.sessions_revoke_all", targetId: adminId })).not.toBeNull();
   });
 });

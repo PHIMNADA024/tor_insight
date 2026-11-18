@@ -1,4 +1,5 @@
 import express from "express";
+import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import request from "supertest";
 import { AdminActionLog } from "../../src/models/adminActionLog.js";
@@ -49,7 +50,8 @@ async function createUserWithData(email: string) {
 function deleteUser(id: mongoose.Types.ObjectId) {
   return request(app)
     .delete(`/api/admin/users/${id}`)
-    .set("Authorization", `Bearer ${adminToken}`);
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ currentPassword: "admin-password" });
 }
 
 async function expectNothingDeleted(data: Awaited<ReturnType<typeof createUserWithData>>) {
@@ -76,7 +78,7 @@ beforeEach(async () => {
   const admin = await User.create({
     name: "Admin",
     email: "admin-transaction@example.test",
-    passwordHash: "not-used-here",
+    passwordHash: await bcrypt.hash("admin-password", 4),
     role: "admin",
     status: "active",
     isEmailVerified: true,

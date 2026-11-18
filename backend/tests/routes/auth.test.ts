@@ -1,11 +1,14 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
+import { generate } from "otplib";
 import request from "supertest";
 import { User } from "../../src/models/user.js";
+import { verifyPassword } from "../../src/services/passwordHash.js";
 import authRoutes from "../../src/routes/auth.js";
 import {
   sendPasswordResetEmail,
+  sendPasswordChangedEmail,
   sendVerificationEmail,
 } from "../../src/services/email.js";
 import {
@@ -22,10 +25,20 @@ jest.mock("../../src/middleware/rateLimit.js", () => {
 jest.mock("../../src/services/email.js", () => ({
   sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
   sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
+  sendPasswordChangedEmail: jest.fn().mockResolvedValue(undefined),
   sendTorMatchEmail: jest.fn().mockResolvedValue(undefined),
   sendFeedbackResolvedEmail: jest.fn().mockResolvedValue(undefined),
   sendNewFeedbackAdminEmail: jest.fn().mockResolvedValue(undefined),
   sendAccountDisabledEmail: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock("../../src/services/passwordPolicy.js", () => ({
+  checkPasswordLength: (password: unknown) =>
+    typeof password !== "string" || [...password].length < 8
+      ? "too_short"
+      : [...password].length > 128 ? "too_long" : undefined,
+  passwordPolicyMessage: (reason: string) => reason,
+  validateNewPassword: jest.fn().mockResolvedValue({ ok: true }),
 }));
 
 const app = express();
@@ -63,6 +76,10 @@ afterAll(async () => {
   await disconnectTestDatabase();
 });
 
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
 beforeEach(async () => {
   await clearTestDatabase();
   emailMock.mockClear();
@@ -81,21 +98,23 @@ describe("POST /api/auth/register", () => {
     [{ name: "Valid Name", email: "not-an-email", password: "password123" }, "invalid email"],
     [{ name: { value: "Name" }, email: "user@example.test", password: "password123" }, "non-string name"],
     [{ name: "Valid Name", email: "user@example.test", password: "short" }, "short password"],
-    [{ name: "Valid Name", email: "user@example.test", password: "p".repeat(73) }, "overlong bcrypt password"],
+    [{ name: "Valid Name", email: "user@example.test", password: "p".repeat(129) }, "overlong password"],
   ])("rejects %s during registration", async (payload) => {
     const response = await request(app).post("/api/auth/register").send(payload);
     expect(response.status).toBe(400);
   });
 
-  it("rejects an email that is already registered, ignoring email case", async () => {
+  it("returns the same response for an email that is already registered", async () => {
     await createUser({ email: "registered@example.test" });
 
     const response = await request(app)
       .post("/api/auth/register")
       .send({ name: "Another User", email: " REGISTERED@example.test ", password: "password123" });
 
-    expect(response.status).toBe(409);
-    expect(response.body.message).toBe("Email is already registered");
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      message: "If registration can be completed, verification instructions will be sent.",
+    });
   });
 
   it("creates an unverified user and sends a six-digit OTP", async () => {
@@ -104,10 +123,14 @@ describe("POST /api/auth/register", () => {
       .send({ name: "New User", email: "new@example.test", password: "password123" });
 
     expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      message: "If registration can be completed, verification instructions will be sent.",
+    });
     expect(emailMock).toHaveBeenCalledWith("new@example.test", expect.stringMatching(/^\d{6}$/));
     const user = await User.findOne({ email: "new@example.test" }).select("+emailVerificationToken");
     expect(user?.isEmailVerified).toBe(false);
     expect(user?.role).toBe("end_user");
+    expect(user?.passwordHashScheme).toBe("bcrypt_sha256");
   });
 });
 
@@ -126,7 +149,7 @@ describe("email verification", () => {
       .post("/api/auth/verify-email")
       .send({ email: "verify@example.test", otp: "654321" });
     expect(wrong.status).toBe(400);
-    expect(wrong.body.message).toBe("Invalid OTP");
+    expect(wrong.body.message).toBe("Invalid or expired verification code");
 
     const correct = await request(app)
       .post("/api/auth/verify-email")
@@ -150,7 +173,21 @@ describe("email verification", () => {
       .send({ email: "expired-otp@example.test", otp: "123456" });
 
     expect(response.status).toBe(400);
-    expect(response.body.message).toBe("OTP has expired");
+    expect(response.body.message).toBe("Invalid or expired verification code");
+  });
+
+  it("does not reveal whether an email exists during verification or resend", async () => {
+    const verify = await request(app)
+      .post("/api/auth/verify-email")
+      .send({ email: "unknown-verify@example.test", otp: "123456" });
+    const resend = await request(app)
+      .post("/api/auth/resend-otp")
+      .send({ email: "unknown-verify@example.test" });
+
+    expect(verify.status).toBe(400);
+    expect(verify.body).toEqual({ message: "Invalid or expired verification code" });
+    expect(resend.status).toBe(200);
+    expect(resend.body).toEqual({ message: "If the account needs verification, a code has been sent." });
   });
 
   it("resends an OTP and refreshes its expiry", async () => {
@@ -168,7 +205,7 @@ describe("email verification", () => {
       .send({ email: "RESEND@example.test" });
 
     expect(response.status).toBe(200);
-    expect(response.body.message).toBe("Verification code resent");
+    expect(response.body.message).toBe("If the account needs verification, a code has been sent.");
     expect(emailMock).toHaveBeenCalledWith("resend@example.test", expect.stringMatching(/^\d{6}$/));
 
     const user = await User.findOne({ email: "resend@example.test" })
@@ -190,16 +227,20 @@ describe("POST /api/auth/login", () => {
     expect(response.body.message).toBe("Invalid email or password");
   });
 
-  it("returns 403 with the user id when email is not verified", async () => {
-    const user = await createUser({ email: "unverified@example.test", verified: false });
+  it("returns the same generic response for unverified and unknown accounts", async () => {
+    await createUser({ email: "unverified@example.test", verified: false });
 
     const response = await request(app)
       .post("/api/auth/login")
-      .send({ email: user.email, password: "correct-password" });
+      .send({ email: "unverified@example.test", password: "correct-password" });
 
-    expect(response.status).toBe(403);
-    expect(response.body.message).toBe("Please verify your email before logging in");
-    expect(response.body.userId).toBe(user._id.toString());
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ message: "Invalid email or password" });
+    const unknown = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "unknown@example.test", password: "correct-password" });
+    expect(unknown.status).toBe(response.status);
+    expect(unknown.body).toEqual(response.body);
   });
 
   it("blocks disabled accounts", async () => {
@@ -209,8 +250,63 @@ describe("POST /api/auth/login", () => {
       .post("/api/auth/login")
       .send({ email: "disabled@example.test", password: "correct-password" });
 
-    expect(response.status).toBe(403);
-    expect(response.body.message).toBe("This account has been disabled");
+    expect(response.status).toBe(401);
+    expect(response.body.message).toBe("Invalid email or password");
+  });
+
+  it("requires TOTP enrollment and a fresh authenticator code before issuing a session", async () => {
+    await createUser({ email: "mfa@example.test" });
+
+    const firstFactor = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "mfa@example.test", password: "correct-password" });
+    expect(firstFactor.status).toBe(202);
+    expect(firstFactor.body).toMatchObject({ mfaSetupRequired: true });
+    expect(firstFactor.body).not.toHaveProperty("token");
+
+    const setup = await request(app)
+      .post("/api/auth/mfa/setup")
+      .set("Authorization", `Bearer ${firstFactor.body.setupToken}`);
+    expect(setup.status).toBe(200);
+    expect(setup.body.secret).toBeTruthy();
+    expect(setup.body.otpauthUri).toMatch(/^otpauth:\/\/totp\//);
+
+    const enrollmentCode = await generate({ secret: setup.body.secret });
+    const completed = await request(app)
+      .post("/api/auth/mfa/confirm-setup")
+      .set("Authorization", `Bearer ${firstFactor.body.setupToken}`)
+      .send({ code: enrollmentCode });
+    expect(completed.status).toBe(200);
+    expect(completed.body.token).toBeTruthy();
+
+    const savedUser = await User.findOne({ email: "mfa@example.test" })
+      .select("+mfaSecretEncrypted +mfaPendingSecretEncrypted");
+    expect(savedUser?.mfaEnabled).toBe(true);
+    expect(savedUser?.mfaSecretEncrypted).not.toBe(setup.body.secret);
+    expect(savedUser?.mfaPendingSecretEncrypted).toBeUndefined();
+
+    const secondLogin = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "mfa@example.test", password: "correct-password" });
+    expect(secondLogin.status).toBe(202);
+    expect(secondLogin.body).toMatchObject({ mfaRequired: true });
+    expect(secondLogin.body).not.toHaveProperty("token");
+
+    const currentStep = Math.floor(Date.now() / 30_000);
+    const nextStepEpochMs = (currentStep + 1) * 30_000 + 1_000;
+    jest.spyOn(Date, "now").mockReturnValue(nextStepEpochMs);
+    const nextStepCode = await generate({ secret: setup.body.secret, epoch: nextStepEpochMs / 1000 });
+    const authenticated = await request(app)
+      .post("/api/auth/mfa/verify")
+      .send({ challengeToken: secondLogin.body.challengeToken, code: nextStepCode });
+    expect(authenticated.status).toBe(200);
+    expect(authenticated.body.token).toBeTruthy();
+
+    const replay = await request(app)
+      .post("/api/auth/mfa/verify")
+      .send({ challengeToken: secondLogin.body.challengeToken, code: nextStepCode });
+    expect(replay.status).toBe(401);
+    jest.restoreAllMocks();
   });
 });
 
@@ -251,7 +347,8 @@ describe("password reset", () => {
     expect(reused.body.message).toBe("Invalid or expired reset link");
 
     const user = await User.findOne({ email: payload.email }).select("+passwordHash");
-    expect(await bcrypt.compare("new-password", user!.passwordHash)).toBe(true);
+    expect(await verifyPassword("new-password", user!.passwordHash, user!.passwordHashScheme)).toBe(true);
+    expect(sendPasswordChangedEmail).toHaveBeenCalledWith(user!.email, user!.name);
   });
 
   it("rejects an expired reset token", async () => {
@@ -269,6 +366,6 @@ describe("password reset", () => {
       .send({ email: "expired-reset@example.test", token: rawToken, newPassword: "new-password" });
 
     expect(response.status).toBe(400);
-    expect(response.body.message).toBe("Reset link has expired");
+    expect(response.body.message).toBe("Invalid or expired reset link");
   });
 });

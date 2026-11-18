@@ -20,6 +20,17 @@ function LoginPage() {
     const [rememberMe, setRememberMe] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
+    const [mfaSetupToken, setMfaSetupToken] = useState<string | null>(null);
+    const [totpSecret, setTotpSecret] = useState("");
+    const [totpCode, setTotpCode] = useState("");
+
+    function completeLogin(data: { token: string; user: unknown }) {
+        const storage = rememberMe ? localStorage : sessionStorage;
+        storage.setItem("token", data.token);
+        storage.setItem("user", JSON.stringify(data.user));
+        router.push("/");
+    }
 
 async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,6 +45,29 @@ async function handleSubmit(e: React.FormEvent) {
         });
 
         const data = await res.json();
+
+        if (res.status === 202 && data.mfaRequired && typeof data.challengeToken === "string") {
+            setMfaChallengeToken(data.challengeToken);
+            setPassword("");
+            return;
+        }
+
+        if (res.status === 202 && data.mfaSetupRequired && typeof data.setupToken === "string") {
+            setMfaSetupToken(data.setupToken);
+            setPassword("");
+            const setup = await fetch(`${API_URL}/api/auth/mfa/setup`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${data.setupToken}` },
+            });
+            const setupData = await setup.json();
+            if (!setup.ok) {
+                setMfaSetupToken(null);
+                setError(setupData.message ?? "ตั้งค่า MFA ไม่สำเร็จ");
+                return;
+            }
+            setTotpSecret(setupData.secret);
+            return;
+        }
 
         if (!res.ok) {
             if (res.status === 403 && data.userId) {
@@ -52,11 +86,36 @@ async function handleSubmit(e: React.FormEvent) {
             return;
         }
 
-        const storage = rememberMe ? localStorage : sessionStorage;
-        storage.setItem("token", data.token);
-        storage.setItem("user", JSON.stringify(data.user));
+        completeLogin(data);
+    } catch {
+        setError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+    } finally {
+        setIsSubmitting(false);
+    }
+}
 
-        router.push("/");
+async function handleMfaSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+    try {
+        const isSetup = Boolean(mfaSetupToken);
+        const res = await fetch(`${API_URL}/api/auth/mfa/${isSetup ? "confirm-setup" : "verify"}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(mfaSetupToken ? { Authorization: `Bearer ${mfaSetupToken}` } : {}),
+            },
+            body: JSON.stringify(isSetup
+                ? { code: totpCode }
+                : { challengeToken: mfaChallengeToken, code: totpCode }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            setError(data.message ?? "รหัสยืนยันไม่ถูกต้อง");
+            return;
+        }
+        completeLogin(data);
     } catch {
         setError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
     } finally {
@@ -85,14 +144,46 @@ useEffect(() => {
                     </p>
 
                     <h1 className="mt-5 text-xl font-semibold">
-                        ยินดีต้อนรับกลับมา!
+                        {mfaSetupToken ? "ตั้งค่าแอปยืนยันตัวตน" : mfaChallengeToken ? "ยืนยันการเข้าสู่ระบบ" : "ยินดีต้อนรับกลับมา!"}
                     </h1>
 
-                    <p className="mt-1 text-sm text-muted-foreground">
-                        เข้าสู่ระบบเพื่อใช้งานบัญชีของคุณ
+                    <p className="mt-1 text-center text-sm text-muted-foreground">
+                        {mfaSetupToken
+                            ? "เพิ่ม TOR Insight ในแอป authenticator แล้วกรอกรหัส 6 หลักเพื่อเปิดใช้งาน MFA"
+                            : mfaChallengeToken
+                                ? "กรอกรหัส 6 หลักจากแอป authenticator ของคุณ"
+                                : "เข้าสู่ระบบเพื่อใช้งานบัญชีของคุณ"}
                     </p>
                 </div>
 
+                {mfaSetupToken || mfaChallengeToken ? (
+                    <form className="mt-7 space-y-4" onSubmit={handleMfaSubmit}>
+                        {mfaSetupToken && (
+                            <div className="rounded-lg border border-border bg-muted/40 p-3 text-center">
+                                <p className="text-xs text-muted-foreground">คีย์ตั้งค่าแบบ manual</p>
+                                <code className="mt-1 block break-all text-sm font-semibold">{totpSecret || "กำลังสร้างคีย์..."}</code>
+                                <p className="mt-2 text-xs text-muted-foreground">คีย์จะแสดงให้เห็นเฉพาะระหว่างการตั้งค่า กรุณาบันทึกไว้ในแอป authenticator</p>
+                            </div>
+                        )}
+                        <div className="space-y-1.5">
+                            <Label htmlFor="totp-code">รหัส authenticator 6 หลัก</Label>
+                            <Input
+                                id="totp-code"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                maxLength={6}
+                                pattern="[0-9]{6}"
+                                value={totpCode}
+                                onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                                required
+                            />
+                        </div>
+                        {error && <p className="text-sm text-destructive">{error}</p>}
+                        <Button type="submit" className="w-full" disabled={isSubmitting || totpCode.length !== 6 || (Boolean(mfaSetupToken) && !totpSecret)}>
+                            {isSubmitting ? "กำลังยืนยัน..." : mfaSetupToken ? "เปิดใช้ MFA และเข้าสู่ระบบ" : "ยืนยันและเข้าสู่ระบบ"}
+                        </Button>
+                    </form>
+                ) : (
                 <form className="mt-7 space-y-4" onSubmit={handleSubmit}>
                     <div className="space-y-1.5">
                         <Label htmlFor="email">อีเมล</Label>
@@ -166,6 +257,7 @@ useEffect(() => {
                         {isSubmitting ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
                     </Button>
                 </form>
+                )}
 
                 <p className="mt-6 text-center text-sm text-muted-foreground">
                     ยังไม่มีบัญชีใช่ไหม?{" "}

@@ -3,12 +3,31 @@ import express from "express";
 import request from "supertest";
 import { User } from "../../src/models/user.js";
 import userRoutes from "../../src/routes/user.js";
+import { sendPasswordChangedEmail } from "../../src/services/email.js";
+import { verifyPassword } from "../../src/services/passwordHash.js";
 import { signAccessToken } from "../../src/services/token.js";
 import {
   clearTestDatabase,
   connectTestDatabase,
   disconnectTestDatabase,
 } from "../helpers/database.js";
+
+jest.mock("../../src/services/email.js", () => ({
+  sendPasswordChangedEmail: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock("../../src/services/passwordPolicy.js", () => ({
+  checkPasswordLength: (password: unknown) =>
+    typeof password !== "string" || [...password].length < 8
+      ? "too_short"
+      : [...password].length > 128 ? "too_long" : undefined,
+  passwordPolicyMessage: (reason: string) => reason === "too_short"
+    ? "Password must be at least 8 characters"
+    : reason,
+  validateNewPassword: jest.fn(async (password: unknown) =>
+    typeof password !== "string" || password.length < 8
+      ? { ok: false, reason: "too_short" }
+      : { ok: true }),
+}));
 
 const app = express();
 app.use(express.json());
@@ -161,8 +180,11 @@ describe("PUT /api/users/change-password", () => {
     expect(response.body.message).toBe("Password changed successfully");
 
     const user = await User.findById(userId).select("+passwordHash");
-    expect(await bcrypt.compare("new-password", user!.passwordHash)).toBe(true);
-    expect(await bcrypt.compare("current-password", user!.passwordHash)).toBe(false);
+    expect(await verifyPassword("new-password", user!.passwordHash, user!.passwordHashScheme)).toBe(true);
+    expect(await verifyPassword("current-password", user!.passwordHash, user!.passwordHashScheme)).toBe(false);
+    expect(user?.passwordHashScheme).toBe("bcrypt_sha256");
     expect(user?.passwordChangedAt).toBeInstanceOf(Date);
+    expect(user?.tokenVersion).toBe(1);
+    expect(sendPasswordChangedEmail).toHaveBeenCalledWith(user?.email, user?.name);
   });
 });
