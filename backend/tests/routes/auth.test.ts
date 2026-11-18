@@ -251,7 +251,7 @@ describe("password reset", () => {
     expect(reused.body.message).toBe("Invalid or expired reset link");
 
     const user = await User.findOne({ email: payload.email }).select("+passwordHash");
-    expect(await bcrypt.compare("new-password", user!.passwordHash)).toBe(true);
+    expect(await bcrypt.compare("new-password", user!.passwordHash!)).toBe(true);
   });
 
   it("rejects an expired reset token", async () => {

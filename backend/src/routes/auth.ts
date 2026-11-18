@@ -141,6 +141,11 @@ router.post("/login", authLimiter, async (req, res) => {
       });
     }
 
+    // Accounts created with Google have no password: same answer as a wrong one.
+    if (!user.passwordHash) {
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
     const isMatch = await bcrypt.compare(password, user.passwordHash);
 
     if (!isMatch) {

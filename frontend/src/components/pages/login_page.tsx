@@ -167,6 +167,17 @@ useEffect(() => {
                     </Button>
                 </form>
 
+                <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="h-px flex-1 bg-border" />
+                    หรือ
+                    <span className="h-px flex-1 bg-border" />
+                </div>
+
+                {/* A full page navigation: the backend sends the browser on to Google. */}
+                <Button asChild variant="outline" className="w-full">
+                    <a href={`${API_URL}/api/auth/google`}>เข้าสู่ระบบด้วย Google</a>
+                </Button>
+
                 <p className="mt-6 text-center text-sm text-muted-foreground">
                     ยังไม่มีบัญชีใช่ไหม?{" "}
                     <Link

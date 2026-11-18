@@ -9,6 +9,7 @@ import cron from "node-cron";
 
 import { connectDB } from "./db.js";
 import authRoutes from "./routes/auth.js";
+import googleAuthRoutes from "./routes/auth-google.js";
 import userRoutes from "./routes/user.js";
 import torRoutes from "./routes/tor.js";
 import adminTorRoutes from "./routes/admin-tor.js";
@@ -76,6 +77,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/auth", googleAuthRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/tors", torRoutes);
 app.use("/api/admin", adminTorRoutes);

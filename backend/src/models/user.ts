@@ -12,7 +12,17 @@ const userSchema = new Schema(
       trim: true,
     },
     // never returned by default queries; opt in with .select("+passwordHash")
-    passwordHash: { type: String, required: true, select: false },
+    // Accounts that only sign in with Google have no password.
+    passwordHash: {
+      type: String,
+      required: function (this: { googleId?: string }) {
+        return !this.googleId;
+      },
+      select: false,
+    },
+    // Google's stable user ID ("sub" in the ID token), set once the account
+    // is linked to Google sign-in.
+    googleId: { type: String },
 
     role: {
       type: String,
@@ -56,6 +66,7 @@ const userSchema = new Schema(
   { timestamps: true },
 );
 
+userSchema.index({ googleId: 1 }, { unique: true, partialFilterExpression: { googleId: { $type: "string" } } });
 userSchema.index({ role: 1 });
 userSchema.index({ status: 1 });
 
