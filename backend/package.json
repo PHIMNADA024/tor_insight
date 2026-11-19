@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node dist/start.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "sbom": "npm sbom --sbom-format cyclonedx --sbom-type application > ../sbom/backend.cdx.json"
   },
