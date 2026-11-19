@@ -16,7 +16,7 @@ import { NonRetryableError, sleep, withRetry } from "./http.js";
 import { withSyncLog, type SyncCounts, type SyncTrigger } from "./syncRun.js";
 import { askAboutPdf, MAX_PDF_BYTES } from "./genai.js";
 import { readDeadline } from "./deadlineReader.js";
-import { isAllowedSourceUrl, safeFetch } from "./safeFetch.js";
+import { DOWNLOAD_LIMITS, isAllowedSourceUrl, readBody, readLimited, safeFetch } from "./safeFetch.js";
 import { toArabicDigitsOpt } from "./thaiDigits.js";
 import { egpSearchUrl } from "./egpLinks.js";
 import { summarizeTorDocument } from "./torDocumentSummary.js";
@@ -64,7 +64,7 @@ const decodeEntities = (s: string) =>
 
 /** Today's invitations. The feed is Windows-874 encoded. */
 async function readFeed(): Promise<FeedItem[]> {
-  const bytes = await (await get(FEED_URL)).arrayBuffer();
+  const bytes = await readBody(await get(FEED_URL), DOWNLOAD_LIMITS.feed, "National e-GP feed");
   const xml = new TextDecoder("windows-874").decode(bytes);
   return xml
     .split("<item>")
@@ -122,9 +122,10 @@ async function processItem(item: FeedItem, knownNumbers: Set<string>): Promise<P
 
   // The link comes from the feed: only follow it to a government site (SSRF).
   if (!isAllowedSourceUrl(item.link)) return "skipped: link is not on a government site";
-  const pdf = Buffer.from(await (await get(item.link)).arrayBuffer());
+  // Stops reading past the limit, so an oversized file never fills memory (V5.2.1).
+  const pdf = await readLimited(await get(item.link), MAX_PDF_BYTES);
+  if (!pdf) return "skipped: PDF too large";
   if (pdf.subarray(0, 4).toString("latin1") !== "%PDF") return "skipped: link is not a PDF";
-  if (pdf.length > MAX_PDF_BYTES) return "skipped: PDF too large";
 
   const announcedAt = new Date(`${item.pubDate}T00:00:00+07:00`);
   const deadline = await readDeadline(pdf, announcedAt);

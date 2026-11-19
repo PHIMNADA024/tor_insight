@@ -15,6 +15,22 @@ const MAX_REDIRECTS = 3;
 
 export class BlockedUrlError extends NonRetryableError {}
 
+/**
+ * The most we read from an outside site in one response (V5.2.1), so a huge
+ * or endless file can't exhaust memory. PDFs use MAX_PDF_BYTES in genai.ts.
+ */
+export const DOWNLOAD_LIMITS = {
+  /** BMA's yearly OCDS file. The largest so far (FY2568) is about 105 MB. */
+  bmaYearFile: 250 * 1024 * 1024,
+  /** One e-GP API response: a page of projects, announcements or details. */
+  apiResponse: 5 * 1024 * 1024,
+  /** National e-GP's RSS feed of the day's invitations. */
+  feed: 5 * 1024 * 1024,
+} as const;
+
+/** A download over its size limit. Never retried: the file won't shrink. */
+export class FileTooLargeError extends NonRetryableError {}
+
 /** True for an https URL on an allowed government site, with no user, password or port. */
 export function isAllowedSourceUrl(value: string): boolean {
   let url: URL;
@@ -44,6 +60,16 @@ export async function safeFetch(value: string, init: RequestInit = {}): Promise<
     if (redirects >= MAX_REDIRECTS) throw new BlockedUrlError("Too many redirects");
     url = new URL(location, url).href;
   }
+}
+
+/** Like readLimited, but throws FileTooLargeError when the body is over maxBytes. */
+export async function readBody(res: Response, maxBytes: number, what = "Response"): Promise<Buffer> {
+  const body = await readLimited(res, maxBytes);
+  if (!body) {
+    const limit = maxBytes >= 1024 * 1024 ? `${Math.round(maxBytes / 1024 / 1024)} MB` : `${maxBytes} bytes`;
+    throw new FileTooLargeError(`${what} is larger than ${limit}`);
+  }
+  return body;
 }
 
 /**
