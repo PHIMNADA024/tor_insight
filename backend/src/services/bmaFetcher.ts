@@ -9,6 +9,7 @@
 import fs from "fs";
 import { Tor } from "../models/index.js";
 import { NonRetryableError, withRetry } from "./http.js";
+import { DOWNLOAD_LIMITS, readBody } from "./safeFetch.js";
 import { withSyncLog, type SyncCounts, type SyncTrigger } from "./syncRun.js";
 import { toArabicDigitsOpt } from "./thaiDigits.js";
 
@@ -139,7 +140,8 @@ export async function downloadBmaFile(
       throw new Error(`Download failed for FY${fiscalYear}: HTTP ${res.status}`);
     }
 
-    return Buffer.from(await res.arrayBuffer());
+    // Stops reading past the limit, so an oversized file never fills memory (V5.2.1).
+    return readBody(res, DOWNLOAD_LIMITS.bmaYearFile, `BMA file for FY${fiscalYear}`);
   });
 
   fs.mkdirSync(destDir, { recursive: true });
