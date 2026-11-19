@@ -24,6 +24,7 @@ import { sanitizeBody } from "./middleware/sanitize.js";
 import { rejectNonObjectJsonBody, rejectPollutedQuery } from "./middleware/validation.js";
 import { notFoundHandler } from "./middleware/notFound.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { httpsRequired, requireHttps, trustProxySetting } from "./middleware/requireHttps.js";
 import { syncRecentFiscalYears } from "./services/bmaFetcher.js";
 import { startEgpSyncSchedule } from "./jobs/egpSyncSchedule.js";
 import { startGprocurementSyncSchedule } from "./jobs/gprocurementSyncSchedule.js";
@@ -49,7 +50,21 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN ?? "http://localhost:3000")
 const BMA_SYNC_ENABLED = (process.env.BMA_SYNC_ENABLED ?? process.env.ENABLE_SYNC_CRON) === "true";
 const BMA_SYNC_CRON = process.env.BMA_SYNC_CRON ?? process.env.SYNC_CRON ?? "0 2 * * *";
 
+// Behind a TLS-terminating proxy, trust its X-Forwarded-* headers so that
+// req.secure and the rate limiter's client IP are correct.
+const trustProxy = trustProxySetting(process.env.TRUST_PROXY);
+if (trustProxy !== undefined) app.set("trust proxy", trustProxy);
+
 app.use(helmet());
+
+// Plain-HTTP API calls are refused, never redirected (V4.1.2). /health stays
+// reachable over HTTP for the host's health checks; it returns no data.
+if (httpsRequired()) {
+  if (trustProxy === undefined) {
+    console.warn("HTTPS is required but TRUST_PROXY is not set: behind a TLS proxy every API request will be refused");
+  }
+  app.use("/api", requireHttps);
+}
 
 app.use(
   cors({
