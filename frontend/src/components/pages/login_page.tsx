@@ -32,6 +32,35 @@ function LoginPage() {
         router.push("/");
     }
 
+/**
+ * After the first factor (password or Google) the server answers 202 with either
+ * an MFA challenge or an MFA setup token. Returns false for any other answer.
+ */
+async function startMfaStep(data: { mfaRequired?: unknown; challengeToken?: unknown; mfaSetupRequired?: unknown; setupToken?: unknown }) {
+    if (data.mfaRequired && typeof data.challengeToken === "string") {
+        setMfaChallengeToken(data.challengeToken);
+        return true;
+    }
+
+    if (data.mfaSetupRequired && typeof data.setupToken === "string") {
+        setMfaSetupToken(data.setupToken);
+        const setup = await fetch(`${API_URL}/api/auth/mfa/setup`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${data.setupToken}` },
+        });
+        const setupData = await setup.json();
+        if (!setup.ok) {
+            setMfaSetupToken(null);
+            setError(setupData.message ?? "ตั้งค่า MFA ไม่สำเร็จ");
+            return true;
+        }
+        setTotpSecret(setupData.secret);
+        return true;
+    }
+
+    return false;
+}
+
 async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -46,26 +75,8 @@ async function handleSubmit(e: React.FormEvent) {
 
         const data = await res.json();
 
-        if (res.status === 202 && data.mfaRequired && typeof data.challengeToken === "string") {
-            setMfaChallengeToken(data.challengeToken);
+        if (res.status === 202 && await startMfaStep(data)) {
             setPassword("");
-            return;
-        }
-
-        if (res.status === 202 && data.mfaSetupRequired && typeof data.setupToken === "string") {
-            setMfaSetupToken(data.setupToken);
-            setPassword("");
-            const setup = await fetch(`${API_URL}/api/auth/mfa/setup`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${data.setupToken}` },
-            });
-            const setupData = await setup.json();
-            if (!setup.ok) {
-                setMfaSetupToken(null);
-                setError(setupData.message ?? "ตั้งค่า MFA ไม่สำเร็จ");
-                return;
-            }
-            setTotpSecret(setupData.secret);
             return;
         }
 
@@ -128,6 +139,21 @@ useEffect(() => {
     if (storedError) {
         sessionStorage.removeItem("authErrorMessage");
         window.setTimeout(() => setError(storedError), 0);
+    }
+
+    // Google sign-in replaced the password step; continue with MFA here.
+    const pendingGoogleMfa = sessionStorage.getItem("pendingGoogleMfa");
+    if (pendingGoogleMfa) {
+        sessionStorage.removeItem("pendingGoogleMfa");
+        (async () => {
+            try {
+                if (!(await startMfaStep(JSON.parse(pendingGoogleMfa)))) {
+                    setError("เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+                }
+            } catch {
+                setError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+            }
+        })();
     }
 }, []);
 
@@ -258,6 +284,17 @@ useEffect(() => {
                     </Button>
                 </form>
                 )}
+
+                <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="h-px flex-1 bg-border" />
+                    หรือ
+                    <span className="h-px flex-1 bg-border" />
+                </div>
+
+                {/* A full page navigation: the backend sends the browser on to Google. */}
+                <Button asChild variant="outline" className="w-full">
+                    <a href={`${API_URL}/api/auth/google`}>เข้าสู่ระบบด้วย Google</a>
+                </Button>
 
                 <p className="mt-6 text-center text-sm text-muted-foreground">
                     ยังไม่มีบัญชีใช่ไหม?{" "}

@@ -161,7 +161,9 @@ router.post("/login", authLimiter, normalizeEnumerationTiming, async (req, res) 
       user?.passwordHash ?? DUMMY_PASSWORD_HASH,
       user?.passwordHashScheme === "bcrypt_sha256" ? "bcrypt_sha256" : "bcrypt",
     );
-    if (!user || !isMatch || user.status !== "active" || !user.isEmailVerified) {
+    // Google-only accounts have no password; without the passwordHash check the
+    // dummy hash above would make its known password work for them.
+    if (!user?.passwordHash || !isMatch || user.status !== "active" || !user.isEmailVerified) {
       return res.status(401).json(GENERIC_AUTH_FAILURE);
     }
 

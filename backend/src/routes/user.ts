@@ -183,6 +183,10 @@ router.put("/change-password", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    if (!user.passwordHash) {
+      return res.status(400).json({ message: "This account signs in with Google and has no password to change" });
+    }
+
     const isMatch = await verifyPassword(currentPassword, user.passwordHash, user.passwordHashScheme);
 
     if (!isMatch) {

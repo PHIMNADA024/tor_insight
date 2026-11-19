@@ -180,8 +180,8 @@ describe("PUT /api/users/change-password", () => {
     expect(response.body.message).toBe("Password changed successfully");
 
     const user = await User.findById(userId).select("+passwordHash");
-    expect(await verifyPassword("new-password", user!.passwordHash, user!.passwordHashScheme)).toBe(true);
-    expect(await verifyPassword("current-password", user!.passwordHash, user!.passwordHashScheme)).toBe(false);
+    expect(await verifyPassword("new-password", user!.passwordHash!, user!.passwordHashScheme)).toBe(true);
+    expect(await verifyPassword("current-password", user!.passwordHash!, user!.passwordHashScheme)).toBe(false);
     expect(user?.passwordHashScheme).toBe("bcrypt_sha256");
     expect(user?.passwordChangedAt).toBeInstanceOf(Date);
     expect(user?.tokenVersion).toBe(1);

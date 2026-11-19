@@ -253,7 +253,9 @@ router.delete("/users/:id", requireAuth, requireAdmin, async (req, res) => {
     }
 
     const actor = await User.findById(req.user!.id).select("+passwordHash");
-    if (!actor || !(await verifyPassword(req.body.currentPassword, actor.passwordHash, actor.passwordHashScheme))) {
+    // Google-only accounts have no password, so they can't confirm this action.
+    if (!actor?.passwordHash ||
+      !(await verifyPassword(req.body.currentPassword, actor.passwordHash, actor.passwordHashScheme))) {
       return res.status(401).json({ message: "Current password is incorrect" });
     }
 

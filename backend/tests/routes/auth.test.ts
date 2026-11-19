@@ -347,7 +347,7 @@ describe("password reset", () => {
     expect(reused.body.message).toBe("Invalid or expired reset link");
 
     const user = await User.findOne({ email: payload.email }).select("+passwordHash");
-    expect(await verifyPassword("new-password", user!.passwordHash, user!.passwordHashScheme)).toBe(true);
+    expect(await verifyPassword("new-password", user!.passwordHash!, user!.passwordHashScheme)).toBe(true);
     expect(sendPasswordChangedEmail).toHaveBeenCalledWith(user!.email, user!.name);
   });
 
