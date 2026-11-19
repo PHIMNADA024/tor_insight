@@ -18,6 +18,40 @@ const apiOrigins = process.env.NEXT_PUBLIC_API_URL
  */
 const PAGE_DESTINATIONS = new Set(["document", "empty"]);
 
+/**
+ * HTTP to HTTPS redirect for pages (ASVS V4.1.2). People open the site in a
+ * browser, so a page asked for over http is sent to the same URL on https.
+ * The API does the opposite and refuses http (backend requireHttps), since a
+ * redirect there would hide a client that sends credentials unencrypted.
+ *
+ * On in production unless HTTPS_REDIRECT=false, and never for localhost, so a
+ * production build can still be tried locally over http.
+ */
+function httpsRedirectEnabled() {
+  if (process.env.HTTPS_REDIRECT === "true") return true;
+  if (process.env.HTTPS_REDIRECT === "false") return false;
+  return process.env.NODE_ENV === "production";
+}
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * The https URL to send a plain-http request to, or null if none is needed.
+ * Behind a proxy that terminates TLS the app itself is reached over http, so
+ * the scheme and host the browser used come from the X-Forwarded-* headers.
+ */
+function httpsRedirectUrl(request: NextRequest): string | null {
+  const firstValue = (name: string) => request.headers.get(name)?.split(",")[0]?.trim();
+  const protocol = (firstValue("x-forwarded-proto") ?? request.nextUrl.protocol.replace(/:$/, "")).toLowerCase();
+  if (protocol !== "http") return null;
+
+  const host = firstValue("x-forwarded-host") ?? request.headers.get("host") ?? request.nextUrl.host;
+  const hostname = host.replace(/:\d+$/, "").toLowerCase();
+  if (!hostname || LOOPBACK_HOSTS.has(hostname)) return null;
+
+  return `https://${hostname}${request.nextUrl.pathname}${request.nextUrl.search}`;
+}
+
 /** A per-response CSP (ASVS V3.4.3): scripts run only with this response's nonce. */
 function contentSecurityPolicy(nonce: string) {
   const directives = [
@@ -45,6 +79,12 @@ function contentSecurityPolicy(nonce: string) {
 }
 
 export function proxy(request: NextRequest) {
+  if (httpsRedirectEnabled()) {
+    const secureUrl = httpsRedirectUrl(request);
+    // 308 keeps the method and body, so a form posted over http isn't turned into a GET.
+    if (secureUrl) return NextResponse.redirect(secureUrl, 308);
+  }
+
   const destination = request.headers.get("sec-fetch-dest");
   if (destination && !PAGE_DESTINATIONS.has(destination)) {
     return new NextResponse(null, { status: 403 });
