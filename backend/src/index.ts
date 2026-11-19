@@ -24,6 +24,9 @@ import { sanitizeBody } from "./middleware/sanitize.js";
 import { rejectNonObjectJsonBody, rejectPollutedQuery } from "./middleware/validation.js";
 import { notFoundHandler } from "./middleware/notFound.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { blockHiddenPaths } from "./middleware/blockHiddenPaths.js";
+import { databasePrivilegeProblems, enforce, isProduction, productionConfigProblems } from "./config/productionConfig.js";
+import mongoose from "mongoose";
 import { syncRecentFiscalYears } from "./services/bmaFetcher.js";
 import { startEgpSyncSchedule } from "./jobs/egpSyncSchedule.js";
 import { startGprocurementSyncSchedule } from "./jobs/gprocurementSyncSchedule.js";
@@ -50,6 +53,9 @@ const BMA_SYNC_ENABLED = (process.env.BMA_SYNC_ENABLED ?? process.env.ENABLE_SYN
 const BMA_SYNC_CRON = process.env.BMA_SYNC_CRON ?? process.env.SYNC_CRON ?? "0 2 * * *";
 
 app.use(helmet());
+
+// No /.git, /.env or other dotfile path is ever answered (V13.4.1).
+app.use(blockHiddenPaths);
 
 app.use(
   cors({
@@ -93,7 +99,13 @@ app.use(errorHandler);
 
 async function startServer() {
   try {
+    // Production must have real secrets and https settings (V13.3.1, V13.4.2).
+    if (isProduction()) enforce(productionConfigProblems(), "Production configuration is not safe");
+
     await connectDB();
+
+    // The database account must hold only readWrite on the app's database (V13.2.2).
+    enforce(await databasePrivilegeProblems(mongoose.connection), "Database account check failed");
 
     app.listen(port, () => {
       console.log(`API listening on http://localhost:${port}`);
