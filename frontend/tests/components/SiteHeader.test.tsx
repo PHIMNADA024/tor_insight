@@ -11,17 +11,25 @@ jest.mock("@/contexts/notification-context", () => ({
   useNotifications: () => ({ unreadCount: mockUnreadCount }),
 }));
 
+const fetchMock = jest.fn();
+
+/** Only the token is stored; the header loads the user from GET /api/auth/me. */
 function storeUser(role: string) {
-  localStorage.setItem("token", "local-token");
-  localStorage.setItem("user", JSON.stringify({
-    id: "user-1",
-    name: "Test User",
-    email: "test@example.test",
-    role,
+  const token = `local-token-${role}`;
+  localStorage.setItem("token", token);
+  fetchMock.mockImplementation(async (url: string) => ({
+    ok: true,
+    status: 200,
+    json: async () => (url.endsWith("/api/auth/me")
+      ? { user: { id: "user-1", name: "Test User", email: "test@example.test", role } }
+      : {}),
   }));
+  return token;
 }
 
 beforeEach(() => {
+  fetchMock.mockReset();
+  global.fetch = fetchMock as unknown as typeof fetch;
   localStorage.clear();
   sessionStorage.clear();
   mockPush.mockReset();
@@ -62,16 +70,15 @@ describe("Site header", () => {
   });
 
   it("asks for logout confirmation and clears local and session storage after confirmation", async () => {
-    storeUser("end_user");
+    const token = storeUser("end_user");
     sessionStorage.setItem("token", "session-token");
-    sessionStorage.setItem("user", "session-user");
     render(<SiteHeader />);
 
     fireEvent.click(await screen.findByRole("button", { name: /Test User/ }));
     fireEvent.click(screen.getByRole("button", { name: "ออกจากระบบ" }));
 
     expect(screen.getByText("คุณต้องการออกจากระบบใช่หรือไม่")).toBeInTheDocument();
-    expect(localStorage.getItem("token")).toBe("local-token");
+    expect(localStorage.getItem("token")).toBe(token);
     expect(sessionStorage.getItem("token")).toBe("session-token");
 
     fireEvent.click(screen.getByRole("button", { name: "ออกจากระบบ" }));
@@ -82,5 +89,41 @@ describe("Site header", () => {
       expect(sessionStorage.getItem("user")).toBeNull();
     });
     expect(mockPush).toHaveBeenCalledWith("/");
+  });
+});
+
+describe("user details in browser storage", () => {
+  it("loads the user from the API and keeps only the token in storage", async () => {
+    const token = storeUser("end_user");
+
+    render(<SiteHeader />);
+
+    expect(await screen.findByRole("button", { name: /Test User/ })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:4000/api/auth/me",
+      expect.objectContaining({ headers: { Authorization: `Bearer ${token}` } }),
+    );
+    expect(localStorage.getItem("user")).toBeNull();
+    expect(sessionStorage.getItem("user")).toBeNull();
+  });
+
+  it("removes user details that an older version stored", async () => {
+    storeUser("end_user");
+    localStorage.setItem("user", JSON.stringify({ email: "old@example.test" }));
+
+    render(<SiteHeader />);
+
+    await screen.findByRole("button", { name: /Test User/ });
+    expect(localStorage.getItem("user")).toBeNull();
+  });
+
+  it("forgets a token that the API no longer accepts", async () => {
+    localStorage.setItem("token", "revoked-token");
+    fetchMock.mockResolvedValue({ ok: false, status: 401, json: async () => ({}) });
+
+    render(<SiteHeader />);
+
+    await waitFor(() => expect(localStorage.getItem("token")).toBeNull());
+    expect(screen.queryByRole("button", { name: /Test User/ })).not.toBeInTheDocument();
   });
 });

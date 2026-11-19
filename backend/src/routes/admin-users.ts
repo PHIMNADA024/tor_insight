@@ -99,7 +99,7 @@ router.patch("/users/:id/disable", requireAuth, requireAdmin, async (req, res) =
     });
 
     sendAccountDisabledEmail(user.email, user.name).catch((error) => {
-        console.error(`Failed to send disable notification to ${user.email}:`, error);
+        console.error(`Failed to send disable notification to user ${user._id}:`, error);
     });
 
     return res.json({ message: "User disabled" });

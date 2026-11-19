@@ -11,19 +11,43 @@ type AuthUser = {
   role: string;
 };
 
-function readStoredUser(): AuthUser | null {
-  if (typeof window === "undefined") return null;
+/** Fired after login, logout or a profile change so every useAuth() reloads. */
+export const AUTH_CHANGED_EVENT = "tor-auth-changed";
 
-  const raw =
-    localStorage.getItem("user") ?? sessionStorage.getItem("user");
+export function notifyAuthChanged() {
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+}
 
-  if (!raw) return null;
+function readToken() {
+  return localStorage.getItem("token") ?? sessionStorage.getItem("token");
+}
 
-  try {
-    return JSON.parse(raw) as AuthUser;
-  } catch {
-    return null;
-  }
+// Only the session token is kept in browser storage. The user's name, email and
+// role are loaded from the API and kept in memory (V14.3.3). One request is
+// shared by every component that needs the user.
+let cached: { token: string; user: Promise<AuthUser | null> } | null = null;
+
+function loadUser(token: string): Promise<AuthUser | null> {
+  if (cached?.token === token) return cached.user;
+
+  const user = fetch(`${API_URL}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+    .then(async (res) => {
+      if (res.status === 401 || res.status === 403) {
+        // The session is no longer valid: forget it.
+        localStorage.removeItem("token");
+        sessionStorage.removeItem("token");
+        return null;
+      }
+      if (!res.ok) return null;
+      const data = await res.json();
+      return (data.user ?? null) as AuthUser | null;
+    })
+    .catch(() => null);
+
+  cached = { token, user };
+  return user;
 }
 
 export function useAuth() {
@@ -31,20 +55,35 @@ export function useAuth() {
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    // Reads localStorage, which isn't available during SSR — this can only
-    // run after mount, so hydrating state here (rather than lazily in
-    // useState) is intentional, not an effect-avoidance smell.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setUser(readStoredUser());
-    setIsLoaded(true);
+    let active = true;
 
-    // keep header in sync if login/logout happens in another tab
-    function handleStorage() {
-      setUser(readStoredUser());
+    // Remove user details that older versions stored next to the token.
+    localStorage.removeItem("user");
+    sessionStorage.removeItem("user");
+
+    async function refresh() {
+      const token = readToken();
+      const loaded = token ? await loadUser(token) : null;
+      if (!active) return;
+      setUser(loaded);
+      setIsLoaded(true);
     }
 
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+    function handleChange() {
+      cached = null;
+      void refresh();
+    }
+
+    void refresh();
+
+    // keep in sync if login/logout happens in this tab or another one
+    window.addEventListener(AUTH_CHANGED_EVENT, handleChange);
+    window.addEventListener("storage", handleChange);
+    return () => {
+      active = false;
+      window.removeEventListener(AUTH_CHANGED_EVENT, handleChange);
+      window.removeEventListener("storage", handleChange);
+    };
   }, []);
 
   const logout = useCallback(async () => {
@@ -64,7 +103,9 @@ export function useAuth() {
     localStorage.removeItem("user");
     sessionStorage.removeItem("token");
     sessionStorage.removeItem("user");
+    cached = null;
     setUser(null);
+    notifyAuthChanged();
   }, []);
 
   return { user, isLoaded, logout };

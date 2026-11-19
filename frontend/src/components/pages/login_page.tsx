@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { notifyAuthChanged } from "@/hooks/use-auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -25,10 +26,11 @@ function LoginPage() {
     const [totpSecret, setTotpSecret] = useState("");
     const [totpCode, setTotpCode] = useState("");
 
-    function completeLogin(data: { token: string; user: unknown }) {
+    function completeLogin(data: { token: string }) {
+        // Only the token is stored; useAuth loads the user's details from the API.
         const storage = rememberMe ? localStorage : sessionStorage;
         storage.setItem("token", data.token);
-        storage.setItem("user", JSON.stringify(data.user));
+        notifyAuthChanged();
         router.push("/");
     }
 

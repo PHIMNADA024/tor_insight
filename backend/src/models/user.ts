@@ -33,6 +33,8 @@ const userSchema = new Schema(
     isEmailVerified: { type: Boolean, default: false, required: true },
     emailVerificationToken: { type: String, select: false },
     emailVerificationExpires: { type: Date, select: false },
+    // Wrong codes entered for the current emailed code; the code stops working at the limit.
+    emailVerificationAttempts: { type: Number, default: 0, select: false },
 
     passwordResetToken: { type: String, select: false },
     passwordResetExpires: { type: Date, select: false },

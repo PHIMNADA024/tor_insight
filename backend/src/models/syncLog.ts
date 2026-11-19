@@ -50,6 +50,8 @@ const syncLogSchema = new Schema(
 syncLogSchema.index({ sourceId: 1, startedAt: -1 });
 // Lets admins filter by status.
 syncLogSchema.index({ status: 1 });
+// Retention (V14.2.7): sync history older than 180 days is deleted automatically.
+syncLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });
 
 export type SyncLogDoc = InferSchemaType<typeof syncLogSchema>;
 export const SyncLog = model("SyncLog", syncLogSchema);

@@ -3,7 +3,11 @@ import AccountSettingsPage from "@/components/pages/account_settings_page";
 
 jest.mock("@/components/SiteHeader", () => ({ SiteHeader: () => null }));
 const mockPush = jest.fn();
-jest.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush }) }));
+// The real Next.js router object stays the same between renders. A new object on
+// every render would re-run the page's [router] effect and reload the profile
+// again and again.
+const mockRouter = { push: mockPush };
+jest.mock("next/navigation", () => ({ useRouter: () => mockRouter }));
 
 const fetchMock = jest.fn();
 const profile = {

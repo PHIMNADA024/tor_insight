@@ -26,6 +26,7 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { syncRecentFiscalYears } from "./services/bmaFetcher.js";
 import { startEgpSyncSchedule } from "./jobs/egpSyncSchedule.js";
 import { startGprocurementSyncSchedule } from "./jobs/gprocurementSyncSchedule.js";
+import { noStore } from "./middleware/noStore.js";
 
 
 process.on("unhandledRejection", (reason) => {
@@ -74,6 +75,8 @@ app.use(sanitizeBody);
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+app.use("/api", noStore);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
