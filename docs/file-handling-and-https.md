@@ -31,6 +31,7 @@ Only the frontend redirects from HTTP to HTTPS, because only the frontend is ope
 | Frontend pages | `308 Permanent Redirect` to the same URL on `https://` | [`frontend/src/proxy.ts`](../frontend/src/proxy.ts) |
 | API (`/api/*`) | `403 {"message":"HTTPS is required"}`, no redirect | [`backend/src/middleware/requireHttps.ts`](../backend/src/middleware/requireHttps.ts) |
 | `/health` | Answered, so the host can run health checks over plain HTTP; it returns no data | [`backend/src/index.ts`](../backend/src/index.ts) |
+| Requests to `localhost` | Answered on both apps, so a production build can be run and tried locally over HTTP. Real clients use the public host name, so they are still held to HTTPS | Both files above |
 
 Browsers that have already visited the site over HTTPS also receive `Strict-Transport-Security`, so later visits go straight to HTTPS without the redirect.
 
@@ -39,7 +40,7 @@ Browsers that have already visited the site over HTTPS also receive `Strict-Tran
 | Variable | Where | Default | Purpose |
 | --- | --- | --- | --- |
 | `HTTPS_REDIRECT` | frontend | On when `NODE_ENV=production` | Set to `false` to serve a production build over plain HTTP, for example during a local security scan. `localhost` is never redirected. |
-| `REQUIRE_HTTPS` | backend | On when `NODE_ENV=production` | `true` or `false` overrides the default. |
+| `REQUIRE_HTTPS` | backend | On when `NODE_ENV=production` | `true` or `false` overrides the default. Requests to `localhost` are always answered. |
 | `TRUST_PROXY` | backend | Unset | Number of proxy hops to trust, usually `1`, when a reverse proxy or load balancer terminates TLS. |
 
 ### Behind a reverse proxy
