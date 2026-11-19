@@ -11,7 +11,8 @@ import { Tor } from "../models/index.js";
 import { NonRetryableError, sleep, withRetry } from "./http.js";
 import { withSyncLog, type SyncCounts, type SyncTrigger } from "./syncRun.js";
 import { readDeadline } from "./deadlineReader.js";
-import { safeFetch } from "./safeFetch.js";
+import { DOWNLOAD_LIMITS, readBody, safeFetch } from "./safeFetch.js";
+import { MAX_PDF_BYTES } from "./genai.js";
 import { summarizeTorDocument } from "./torDocumentSummary.js";
 import { readWinners } from "./winnerReader.js";
 import { toArabicDigits } from "./thaiDigits.js";
@@ -91,7 +92,8 @@ async function egpGet<T>(path: string): Promise<T> {
       throw new NonRetryableError(`e-GP ${path}: HTTP ${res.status}`);
     }
     if (!res.ok) throw new Error(`e-GP ${path}: HTTP ${res.status}`);
-    return (await res.json()) as T;
+    const body = await readBody(res, DOWNLOAD_LIMITS.apiResponse, `e-GP ${path}`);
+    return JSON.parse(body.toString("utf8")) as T;
   });
 }
 
@@ -150,7 +152,8 @@ async function downloadPdf(url: string): Promise<Buffer> {
       throw new NonRetryableError(`PDF: HTTP ${res.status}`);
     }
     if (!res.ok) throw new Error(`PDF: HTTP ${res.status}`);
-    return Buffer.from(await res.arrayBuffer());
+    // Stops reading past the limit, so an oversized file never fills memory (V5.2.1).
+    return readBody(res, MAX_PDF_BYTES, "PDF");
   });
 }
 
