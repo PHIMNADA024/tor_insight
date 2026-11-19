@@ -9,13 +9,20 @@ import type { NextFunction, Request, Response } from "express";
  * still "work". Refusing makes the mistake visible straight away. Only the
  * frontend, which people do open in a browser, redirects (frontend/src/proxy.ts).
  *
- * Behind a proxy that terminates TLS, set TRUST_PROXY so that req.secure is
- * read from the proxy's X-Forwarded-Proto header.
+ * Requests addressed to localhost are let through, as in the frontend's
+ * redirect, so a production build can still be run and tried locally over
+ * http. Real clients reach the API by its public host name, so they are still
+ * held to HTTPS.
+ *
+ * Behind a proxy that terminates TLS, set TRUST_PROXY so that req.secure and
+ * req.hostname are read from the proxy's X-Forwarded-* headers.
  */
 export function requireHttps(req: Request, res: Response, next: NextFunction) {
-  if (req.secure) return next();
+  if (req.secure || LOOPBACK_HOSTS.has(req.hostname.toLowerCase())) return next();
   return res.status(403).json({ message: "HTTPS is required" });
 }
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 /** On in production unless REQUIRE_HTTPS=false; elsewhere only with REQUIRE_HTTPS=true. */
 export function httpsRequired(env: NodeJS.ProcessEnv = process.env): boolean {
