@@ -79,6 +79,12 @@ function contentSecurityPolicy(nonce: string) {
 }
 
 export function proxy(request: NextRequest) {
+  // No /.git, /.env or other dotfile path is ever served (ASVS V13.4.1).
+  // /.well-known/ stays reachable for standard files such as ACME challenges.
+  if (request.nextUrl.pathname.split("/").some((s) => s.startsWith(".") && s !== ".well-known")) {
+    return new NextResponse(null, { status: 404 });
+  }
+
   if (httpsRedirectEnabled()) {
     const secureUrl = httpsRedirectUrl(request);
     // 308 keeps the method and body, so a form posted over http isn't turned into a GET.

@@ -24,6 +24,9 @@ import { sanitizeBody } from "./middleware/sanitize.js";
 import { rejectNonObjectJsonBody, rejectPollutedQuery } from "./middleware/validation.js";
 import { notFoundHandler } from "./middleware/notFound.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { blockHiddenPaths } from "./middleware/blockHiddenPaths.js";
+import { databasePrivilegeProblems, enforce, isProduction, productionConfigProblems } from "./config/productionConfig.js";
+import mongoose from "mongoose";
 import { httpsRequired, requireHttps, trustProxySetting } from "./middleware/requireHttps.js";
 import { syncRecentFiscalYears } from "./services/bmaFetcher.js";
 import { startEgpSyncSchedule } from "./jobs/egpSyncSchedule.js";
@@ -56,6 +59,9 @@ const trustProxy = trustProxySetting(process.env.TRUST_PROXY);
 if (trustProxy !== undefined) app.set("trust proxy", trustProxy);
 
 app.use(helmet());
+
+// No /.git, /.env or other dotfile path is ever answered (V13.4.1).
+app.use(blockHiddenPaths);
 
 // Plain-HTTP API calls are refused, never redirected (V4.1.2). /health stays
 // reachable over HTTP for the host's health checks; it returns no data.
@@ -108,7 +114,13 @@ app.use(errorHandler);
 
 async function startServer() {
   try {
+    // Production must have real secrets and https settings (V13.3.1, V13.4.2).
+    if (isProduction()) enforce(productionConfigProblems(), "Production configuration is not safe");
+
     await connectDB();
+
+    // The database account must hold only readWrite on the app's database (V13.2.2).
+    enforce(await databasePrivilegeProblems(mongoose.connection), "Database account check failed");
 
     app.listen(port, () => {
       console.log(`API listening on http://localhost:${port}`);
