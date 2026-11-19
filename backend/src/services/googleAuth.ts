@@ -117,6 +117,7 @@ export async function findOrCreateGoogleUser(identity: GoogleIdentity, retry = t
       existing.set("emailVerificationToken", undefined);
       existing.set("emailVerificationExpires", undefined);
       existing.passwordChangedAt = new Date();
+      existing.tokenVersion = (existing.tokenVersion ?? 0) + 1;
       existing.isEmailVerified = true;
     }
     await existing.save();

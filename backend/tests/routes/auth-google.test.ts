@@ -3,12 +3,14 @@ import bcrypt from "bcryptjs";
 import express from "express";
 import request from "supertest";
 import { OAuth2Client } from "google-auth-library";
+import { generate } from "otplib";
 import { OAuthLoginCode, OAuthState } from "../../src/models/oauth.js";
 import { User } from "../../src/models/user.js";
 import authRoutes from "../../src/routes/auth.js";
 import googleAuthRoutes from "../../src/routes/auth-google.js";
 import userRoutes from "../../src/routes/user.js";
-import { signAccessToken, verifyAccessToken } from "../../src/services/token.js";
+import { encryptMfaSecret } from "../../src/services/mfa.js";
+import { signAccessToken, verifyAccessToken, verifyMfaSetupToken } from "../../src/services/token.js";
 import {
   clearTestDatabase,
   connectTestDatabase,
@@ -23,6 +25,17 @@ jest.mock("../../src/middleware/rateLimit.js", () => {
 jest.mock("../../src/services/email.js", () => ({
   sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
   sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
+  sendPasswordChangedEmail: jest.fn().mockResolvedValue(undefined),
+}));
+
+// The real policy also asks Have I Been Pwned over the network.
+jest.mock("../../src/services/passwordPolicy.js", () => ({
+  checkPasswordLength: (password: unknown) =>
+    typeof password !== "string" || [...password].length < 8
+      ? "too_short"
+      : [...password].length > 128 ? "too_long" : undefined,
+  passwordPolicyMessage: (reason: string) => reason,
+  validateNewPassword: jest.fn(async () => ({ ok: true })),
 }));
 
 const app = express();
@@ -84,6 +97,10 @@ function fragmentOf(location: string) {
   const url = new URL(location);
   expect(`${url.origin}${url.pathname}`).toBe(`${FRONTEND}/auth/google`);
   return new URLSearchParams(url.hash.slice(1));
+}
+
+function exchange(code: string | null) {
+  return request(app).post("/api/auth/google/exchange").send({ code });
 }
 
 /** Runs steps 1 and 2 and returns what the frontend receives. */
@@ -332,9 +349,9 @@ describe("account linking", () => {
     });
 
     const fragment = await completeLogin();
-    const login = await request(app).post("/api/auth/google/exchange").send({ code: fragment.get("code") });
+    const login = await exchange(fragment.get("code"));
 
-    expect(login.body.user.id).toBe(user._id.toString());
+    expect(verifyMfaSetupToken(login.body.setupToken).id).toBe(user._id.toString());
     expect(await User.countDocuments()).toBe(1);
   });
 
@@ -349,7 +366,8 @@ describe("account linking", () => {
     const passwordLogin = await request(app)
       .post("/api/auth/login")
       .send({ email: "somchai@gmail.com", password: "local-password" });
-    expect(passwordLogin.status).toBe(200);
+    expect(passwordLogin.status).toBe(202);
+    expect(passwordLogin.body).toMatchObject({ mfaSetupRequired: true });
   });
 
   it("removes the password of an unverified account before linking it (pre-hijacking)", async () => {
@@ -361,6 +379,7 @@ describe("account linking", () => {
     expect(updated!.googleId).toBe("google-user-123");
     expect(updated!.isEmailVerified).toBe(true);
     expect(updated!.passwordHash).toBeUndefined();
+    expect(updated!.tokenVersion).toBe(1);
     const attackerLogin = await request(app)
       .post("/api/auth/login")
       .send({ email: "somchai@gmail.com", password: "local-password" });
@@ -390,22 +409,100 @@ describe("account linking", () => {
 });
 
 describe("POST /api/auth/google/exchange", () => {
-  it("swaps the login code for our access token", async () => {
+  it("never hands out an access token without MFA", async () => {
     const fragment = await completeLogin();
 
-    const res = await request(app).post("/api/auth/google/exchange").send({ code: fragment.get("code") });
+    const res = await exchange(fragment.get("code"));
 
-    expect(res.status).toBe(200);
-    expect(res.body.user).toMatchObject({ email: "somchai@gmail.com", role: "end_user" });
+    expect(res.status).toBe(202);
+    expect(res.body.token).toBeUndefined();
+  });
+
+  it("asks a user without MFA to set it up, like a correct password does", async () => {
+    const fragment = await completeLogin();
+
+    const res = await exchange(fragment.get("code"));
+
+    expect(res.body).toMatchObject({ mfaSetupRequired: true });
     const user = await User.findOne({ email: "somchai@gmail.com" });
-    expect(verifyAccessToken(res.body.token)).toMatchObject({ id: user!._id.toString(), role: "end_user" });
+    expect(verifyMfaSetupToken(res.body.setupToken)).toMatchObject({
+      id: user!._id.toString(),
+      tokenVersion: user!.tokenVersion,
+    });
+  });
+
+  it("completes the first Google login through MFA setup", async () => {
+    const fragment = await completeLogin();
+    const firstFactor = await exchange(fragment.get("code"));
+
+    const setup = await request(app)
+      .post("/api/auth/mfa/setup")
+      .set("Authorization", `Bearer ${firstFactor.body.setupToken}`);
+    const confirmed = await request(app)
+      .post("/api/auth/mfa/confirm-setup")
+      .set("Authorization", `Bearer ${firstFactor.body.setupToken}`)
+      .send({ code: await generate({ secret: setup.body.secret }) });
+
+    expect(confirmed.status).toBe(200);
+    const user = await User.findOne({ email: "somchai@gmail.com" });
+    expect(user!.mfaEnabled).toBe(true);
+    expect(verifyAccessToken(confirmed.body.token)).toMatchObject({ id: user!._id.toString(), role: "end_user" });
+  });
+
+  it("asks a user with MFA for their authenticator code, then logs them in", async () => {
+    const secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+    await User.create({
+      name: "Has MFA",
+      email: "somchai@gmail.com",
+      googleId: "google-user-123",
+      role: "end_user",
+      status: "active",
+      isEmailVerified: true,
+      mfaEnabled: true,
+      mfaSecretEncrypted: encryptMfaSecret(secret),
+      tokenVersion: 3,
+    });
+    const fragment = await completeLogin();
+
+    const firstFactor = await exchange(fragment.get("code"));
+    expect(firstFactor.status).toBe(202);
+    expect(firstFactor.body).toMatchObject({ mfaRequired: true });
+
+    const verified = await request(app)
+      .post("/api/auth/mfa/verify")
+      .send({ challengeToken: firstFactor.body.challengeToken, code: await generate({ secret }) });
+
+    expect(verified.status).toBe(200);
+    expect(verifyAccessToken(verified.body.token)).toMatchObject({ tokenVersion: 3 });
+  });
+
+  it("rejects a wrong authenticator code after Google login", async () => {
+    await User.create({
+      name: "Has MFA",
+      email: "somchai@gmail.com",
+      googleId: "google-user-123",
+      role: "end_user",
+      status: "active",
+      isEmailVerified: true,
+      mfaEnabled: true,
+      mfaSecretEncrypted: encryptMfaSecret("JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"),
+    });
+    const fragment = await completeLogin();
+    const firstFactor = await exchange(fragment.get("code"));
+
+    const verified = await request(app)
+      .post("/api/auth/mfa/verify")
+      .send({ challengeToken: firstFactor.body.challengeToken, code: "000000" });
+
+    expect(verified.status).toBe(401);
+    expect(verified.body.token).toBeUndefined();
   });
 
   it("accepts each login code only once", async () => {
     const fragment = await completeLogin();
-    await request(app).post("/api/auth/google/exchange").send({ code: fragment.get("code") });
+    await exchange(fragment.get("code"));
 
-    const second = await request(app).post("/api/auth/google/exchange").send({ code: fragment.get("code") });
+    const second = await exchange(fragment.get("code"));
 
     expect(second.status).toBe(401);
   });
@@ -418,7 +515,7 @@ describe("POST /api/auth/google/exchange", () => {
       request(app).post("/api/auth/google/exchange").send({ code: fragment.get("code") }),
     ]);
 
-    expect(results.map((r) => r.status).sort()).toEqual([200, 401]);
+    expect(results.map((r) => r.status).sort()).toEqual([202, 401]);
   });
 
   it("rejects an expired login code", async () => {
@@ -475,16 +572,28 @@ describe("password routes for Google-only accounts", () => {
     expect(res.body.message).toBe("Invalid email or password");
   });
 
+  it("doesn't accept the server's dummy password for an account without a password", async () => {
+    await googleOnlyUser();
+
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "google-only@gmail.com", password: "not-a-real-password" });
+
+    expect(res.status).toBe(401);
+    expect(res.body.setupToken).toBeUndefined();
+  });
+
   it("refuses to change a password the account doesn't have (400)", async () => {
     const user = await googleOnlyUser();
-    const token = signAccessToken({ id: user._id.toString(), role: user.role });
+    const token = signAccessToken({ id: user._id.toString(), role: user.role, tokenVersion: user.tokenVersion });
 
     const res = await request(app)
       .put("/api/users/change-password")
       .set("Authorization", `Bearer ${token}`)
-      .send({ currentPassword: "guess-password", newPassword: "new-password-123" });
+      .send({ currentPassword: "guess-password", newPassword: "A-much-stronger-passphrase-2026!" });
 
     expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/Google/);
   });
 
   it("still requires a password for accounts without Google", async () => {

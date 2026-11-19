@@ -1,15 +1,24 @@
 import { Router } from "express";
 import mongoose from "mongoose";
+import crypto from "node:crypto";
 import { User } from "../models/user.js";
 import { AdminActionLog } from "../models/adminActionLog.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 import { Feedback } from "../models/feedback.js";
 import { Notification } from "../models/notification.js";
-import { sendAccountDisabledEmail } from "../services/email.js";
-import { isObjectId } from "../middleware/validation.js";
+import { sendAccountDisabledEmail, sendPasswordResetEmail } from "../services/email.js";
+import { authLimiter } from "../middleware/rateLimit.js";
+import { isObjectId, isRecord } from "../middleware/validation.js";
+import { checkPasswordLength } from "../services/passwordPolicy.js";
+import { verifyPassword } from "../services/passwordHash.js";
 
 const router = Router();
+const FRONTEND_URL = process.env.FRONTEND_ORIGIN ?? "http://localhost:3000";
+
+function hashToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
 
 /**
  * List users, optionally filtered by status or role.
@@ -76,6 +85,9 @@ router.patch("/users/:id/disable", requireAuth, requireAdmin, async (req, res) =
     }
 
     user.status = "disabled";
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    user.mfaLoginChallengeHash = undefined;
+    user.mfaLoginChallengeExpiresAt = undefined;
     await user.save();
 
     await AdminActionLog.create({
@@ -94,6 +106,101 @@ router.patch("/users/:id/disable", requireAuth, requireAdmin, async (req, res) =
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Failed to disable user" });
+  }
+});
+
+/**
+ * Send a one-time reset link to the selected user without revealing or choosing a password.
+ * POST /api/admin/users/:id/password-reset
+ */
+router.post("/users/:id/password-reset", requireAuth, requireAdmin, authLimiter, async (req, res) => {
+  try {
+    if (!isObjectId(req.params.id)) return res.status(400).json({ message: "รหัสผู้ใช้ไม่ถูกต้อง" });
+    if (req.body !== undefined && (!isRecord(req.body) || Object.keys(req.body).length > 0)) {
+      return res.status(400).json({ message: "This endpoint does not accept a request body" });
+    }
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    user.passwordResetToken = hashToken(rawToken);
+    user.passwordResetExpires = new Date(Date.now() + 30 * 60 * 1000);
+    await user.save();
+
+    const resetLink = `${FRONTEND_URL}/reset-password?token=${rawToken}&email=${encodeURIComponent(user.email)}`;
+    try {
+      await sendPasswordResetEmail(user.email, resetLink);
+    } catch (error) {
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+      await user.save();
+      throw error;
+    }
+
+    await AdminActionLog.create({
+      actorId: req.user!.id,
+      action: "user.password_reset",
+      targetType: "User",
+      targetId: user._id,
+      metadata: { method: "email_link" },
+    });
+
+    return res.json({ message: "Password reset instructions sent" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Failed to initiate password reset" });
+  }
+});
+
+/** Revoke all sessions and pending MFA challenges for one account without disabling it. */
+router.post("/users/:id/sessions/revoke", requireAuth, requireAdmin, authLimiter, async (req, res) => {
+  try {
+    if (!isObjectId(req.params.id)) return res.status(400).json({ message: "รหัสผู้ใช้ไม่ถูกต้อง" });
+    if (req.body !== undefined && (!isRecord(req.body) || Object.keys(req.body).length > 0)) {
+      return res.status(400).json({ message: "This endpoint does not accept a request body" });
+    }
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    user.mfaLoginChallengeHash = undefined;
+    user.mfaLoginChallengeExpiresAt = undefined;
+    await user.save();
+    await AdminActionLog.create({
+      actorId: req.user!.id,
+      action: "user.sessions_revoke",
+      targetType: "User",
+      targetId: user._id,
+      metadata: { tokenVersion: user.tokenVersion },
+    });
+    return res.json({ message: "User sessions revoked" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Failed to revoke user sessions" });
+  }
+});
+
+/** Revoke every account's sessions, including the administrator's current session. */
+router.post("/users/sessions/revoke-all", requireAuth, requireAdmin, authLimiter, async (req, res) => {
+  try {
+    if (req.body !== undefined && (!isRecord(req.body) || Object.keys(req.body).length > 0)) {
+      return res.status(400).json({ message: "This endpoint does not accept a request body" });
+    }
+    const result = await User.updateMany({}, {
+      $inc: { tokenVersion: 1 },
+      $unset: { mfaLoginChallengeHash: 1, mfaLoginChallengeExpiresAt: 1 },
+    });
+    await AdminActionLog.create({
+      actorId: req.user!.id,
+      action: "users.sessions_revoke_all",
+      targetType: "User",
+      targetId: req.user!.id,
+      metadata: { accountsAffected: result.modifiedCount },
+    });
+    return res.json({ message: "All user sessions revoked", accountsAffected: result.modifiedCount });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Failed to revoke all sessions" });
   }
 });
 
@@ -139,6 +246,19 @@ router.patch("/users/:id/enable", requireAuth, requireAdmin, async (req, res) =>
 router.delete("/users/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     if (!isObjectId(req.params.id)) return res.status(400).json({ message: "รหัสผู้ใช้ไม่ถูกต้อง" });
+    if (!isRecord(req.body) || Object.keys(req.body).some((field) => field !== "currentPassword") ||
+      typeof req.body.currentPassword !== "string" || req.body.currentPassword.length === 0 ||
+      checkPasswordLength(req.body.currentPassword) === "too_long") {
+      return res.status(400).json({ message: "Current password is required" });
+    }
+
+    const actor = await User.findById(req.user!.id).select("+passwordHash");
+    // Google-only accounts have no password, so they can't confirm this action.
+    if (!actor?.passwordHash ||
+      !(await verifyPassword(req.body.currentPassword, actor.passwordHash, actor.passwordHashScheme))) {
+      return res.status(401).json({ message: "Current password is incorrect" });
+    }
+
     const user = await User.findById(req.params.id);
 
     if (!user) {

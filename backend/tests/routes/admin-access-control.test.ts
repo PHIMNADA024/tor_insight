@@ -1,4 +1,5 @@
 import express, { type Router } from "express";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import request from "supertest";
@@ -12,7 +13,7 @@ import adminTorRoutes from "../../src/routes/admin-tor.js";
 import adminUserRoutes from "../../src/routes/admin-users.js";
 import { syncFiscalYear, syncRecentFiscalYears } from "../../src/services/bmaFetcher.js";
 import { runEgpSync } from "../../src/services/egpFetcher.js";
-import { sendAccountDisabledEmail, sendFeedbackResolvedEmail } from "../../src/services/email.js";
+import { sendAccountDisabledEmail, sendFeedbackResolvedEmail, sendPasswordResetEmail } from "../../src/services/email.js";
 import { runGprocurementSync } from "../../src/services/gprocurementFetcher.js";
 import { signAccessToken } from "../../src/services/token.js";
 import {
@@ -30,6 +31,7 @@ import {
 jest.mock("../../src/services/email.js", () => ({
   sendFeedbackResolvedEmail: jest.fn().mockResolvedValue(undefined),
   sendAccountDisabledEmail: jest.fn().mockResolvedValue(undefined),
+  sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("../../src/services/bmaFetcher.js", () => ({
   syncFiscalYear: jest.fn().mockResolvedValue({}),
@@ -86,7 +88,7 @@ function createUser(options: { role?: "end_user" | "admin"; status?: "active" | 
   return User.create({
     name: "Access Control User",
     email: `${new mongoose.Types.ObjectId()}@example.test`,
-    passwordHash: "not-used-here",
+    passwordHash: bcrypt.hashSync("admin-password", 4),
     role: options.role ?? "end_user",
     status: options.status ?? "active",
     isEmailVerified: true,
@@ -98,7 +100,7 @@ function tokenFor(user: { _id: mongoose.Types.ObjectId; role: string }) {
   return signAccessToken({ id: user._id.toString(), role: user.role });
 }
 
-const adminClaims = () => ({ id: admin._id.toString(), role: "admin" });
+const adminClaims = () => ({ id: admin._id.toString(), role: "admin", tokenVersion: 0, purpose: "access" });
 
 /** An unsigned token: base64url header and claims, with an empty signature. */
 function unsignedToken() {
@@ -121,7 +123,7 @@ const REJECTED: [string, number, string, () => string | undefined][] = [
     "Session expired, please log in again",
     () =>
       `Bearer ${jwt.sign(
-        { id: passwordChangedAdmin._id.toString(), role: "admin", iat: Math.floor(Date.now() / 1000) - 60 },
+        { id: passwordChangedAdmin._id.toString(), role: "admin", tokenVersion: 0, purpose: "access", iat: Math.floor(Date.now() / 1000) - 60 },
         secret,
       )}`,
   ],
@@ -147,6 +149,7 @@ function send({ method, path }: Route, authorization?: string) {
 
   const req = request(app)[method](url);
   if (authorization) req.set("Authorization", authorization);
+  if (method === "delete") req.send({ currentPassword: "admin-password" });
   if (path.startsWith("/tors/:id") && method === "put") return req.send({ title: "Changed title" });
   if (path.startsWith("/feedback/:id")) return req.send({ status: "resolved", adminResponse: "Changed response" });
   return req;
@@ -155,11 +158,12 @@ function send({ method, path }: Route, authorization?: string) {
 /** Everything in the database, to compare before and after a request. */
 async function databaseContents() {
   const models = [User, Tor, Feedback, AdminActionLog, Notification, SyncLog] as mongoose.Model<unknown>[];
-  return Promise.all(models.map((model) => model.find().select("+passwordChangedAt").sort({ _id: 1 }).lean()));
+  return Promise.all(models.map((model) => model.find().select("-lastActivityAt").sort({ _id: 1 }).lean()));
 }
 
 const SIDE_EFFECTS = [
   sendAccountDisabledEmail,
+  sendPasswordResetEmail,
   sendFeedbackResolvedEmail,
   syncFiscalYear,
   syncRecentFiscalYears,

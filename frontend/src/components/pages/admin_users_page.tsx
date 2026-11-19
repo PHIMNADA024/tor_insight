@@ -10,11 +10,13 @@ import {
     Ban,
     CheckCircle2,
     Trash2,
+    LogOut,
 } from "lucide-react";
 import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { useRouter } from "next/navigation";
 import { SiteHeader } from "../SiteHeader";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5050";
@@ -49,13 +51,17 @@ type UserItem = {
 };
 
 export default function AdminUsersPage() {
-    const { user: currentUser } = useAuth();
+    const { user: currentUser, logout } = useAuth();
+    const router = useRouter();
     const [users, setUsers] = useState<UserItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [search, setSearch] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [actioningId, setActioningId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const [deleteCurrentPassword, setDeleteCurrentPassword] = useState("");
+    const [notice, setNotice] = useState<string | null>(null);
+    const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
 
     async function fetchUsers(searchTerm = ""): Promise<UserItem[]> {
         const token = getToken();
@@ -106,6 +112,7 @@ export default function AdminUsersPage() {
     async function handleToggleStatus(user: UserItem) {
         setActioningId(user._id);
         setError(null);
+        setNotice(null);
 
         const endpoint = user.status === "active" ? "disable" : "enable";
 
@@ -137,7 +144,78 @@ export default function AdminUsersPage() {
         }
     }
 
-    async function handleDelete(id: string) {
+    async function handlePasswordReset(user: UserItem) {
+        setActioningId(user._id);
+        setError(null);
+        setNotice(null);
+
+        try {
+            const token = getToken();
+            const res = await fetch(`${API_URL}/api/admin/users/${user._id}/password-reset`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setError(data.message ?? "ส่งลิงก์รีเซ็ตรหัสผ่านไม่สำเร็จ");
+                return;
+            }
+            setNotice(`ส่งลิงก์รีเซ็ตรหัสผ่านไปยัง ${user.email} แล้ว`);
+        } catch {
+            setError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+        } finally {
+            setActioningId(null);
+        }
+    }
+
+    async function handleRevokeSessions(user: UserItem) {
+        setActioningId(user._id);
+        setError(null);
+        setNotice(null);
+        try {
+            const token = getToken();
+            const res = await fetch(`${API_URL}/api/admin/users/${user._id}/sessions/revoke`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setError(data.message ?? "ยกเลิกเซสชันไม่สำเร็จ");
+                return;
+            }
+            setNotice(`ยกเลิกเซสชันทั้งหมดของ ${user.email} แล้ว`);
+        } catch {
+            setError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+        } finally {
+            setActioningId(null);
+        }
+    }
+
+    async function handleRevokeAllSessions() {
+        setActioningId("all-sessions");
+        setError(null);
+        try {
+            const token = getToken();
+            const res = await fetch(`${API_URL}/api/admin/users/sessions/revoke-all`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setError(data.message ?? "ยกเลิกเซสชันทั้งหมดไม่สำเร็จ");
+                return;
+            }
+            await logout();
+            router.push("/login");
+        } catch {
+            setError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+        } finally {
+            setActioningId(null);
+            setConfirmRevokeAll(false);
+        }
+    }
+
+    async function handleDelete(id: string, currentPassword: string) {
         setActioningId(id);
         setError(null);
 
@@ -145,7 +223,11 @@ export default function AdminUsersPage() {
             const token = getToken();
             const res = await fetch(`${API_URL}/api/admin/users/${id}`, {
                 method: "DELETE",
-                headers: { Authorization: `Bearer ${token}` },
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ currentPassword }),
             });
 
             const data = await res.json();
@@ -157,6 +239,7 @@ export default function AdminUsersPage() {
 
             setUsers((prev) => prev.filter((u) => u._id !== id));
             setConfirmDeleteId(null);
+            setDeleteCurrentPassword("");
         } catch {
             setError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
         } finally {
@@ -181,6 +264,11 @@ export default function AdminUsersPage() {
                             จัดการผู้ใช้งาน
                         </h1>
 
+                        <Button variant="destructive" size="sm" onClick={() => setConfirmRevokeAll(true)}>
+                            <LogOut className="mr-1 size-3.5" />
+                            ออกจากทุกบัญชี
+                        </Button>
+
                         <form onSubmit={handleSearchSubmit} className="flex gap-2">
                             <Input
                                 placeholder="ค้นหาด้วยชื่อหรืออีเมล"
@@ -195,6 +283,7 @@ export default function AdminUsersPage() {
                     </div>
 
                     {error && <p className="text-sm text-destructive">{error}</p>}
+                    {notice && <p className="text-sm text-success">{notice}</p>}
 
                     {isLoading ? (
                         <p className="text-sm text-muted-foreground">กำลังโหลด...</p>
@@ -258,6 +347,23 @@ export default function AdminUsersPage() {
                                                                 size="sm"
                                                                 variant="outline"
                                                                 disabled={actioningId === user._id}
+                                                                onClick={() => handlePasswordReset(user)}
+                                                            >
+                                                                {actioningId === user._id ? "กำลังส่ง..." : "ส่งลิงก์รีเซ็ตรหัสผ่าน"}
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                disabled={actioningId === user._id}
+                                                                onClick={() => handleRevokeSessions(user)}
+                                                            >
+                                                                <LogOut className="mr-1 size-3.5" />
+                                                                ยกเลิกเซสชัน
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                disabled={actioningId === user._id}
                                                                 onClick={() => handleToggleStatus(user)}
                                                             >
                                                                 {user.status === "active" ? (
@@ -297,7 +403,10 @@ export default function AdminUsersPage() {
                 {confirmDeleteId && (
                     <div
                         className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-                        onClick={() => setConfirmDeleteId(null)}
+                        onClick={() => {
+                            setConfirmDeleteId(null);
+                            setDeleteCurrentPassword("");
+                        }}
                     >
                         <div
                             className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]"
@@ -308,16 +417,52 @@ export default function AdminUsersPage() {
                                 การลบผู้ใช้งานนี้ไม่สามารถย้อนกลับได้ ข้อมูลบัญชีทั้งหมดจะถูกลบถาวร
                             </p>
 
+                            <label className="mt-4 block space-y-1.5 text-sm">
+                                <span>ยืนยันรหัสผ่านปัจจุบันของคุณ</span>
+                                <Input
+                                    type="password"
+                                    autoComplete="current-password"
+                                    value={deleteCurrentPassword}
+                                    onChange={(event) => setDeleteCurrentPassword(event.target.value)}
+                                />
+                            </label>
+
                             <div className="mt-6 flex justify-end gap-2">
-                                <Button variant="outline" onClick={() => setConfirmDeleteId(null)}>
+                                <Button variant="outline" onClick={() => {
+                                    setConfirmDeleteId(null);
+                                    setDeleteCurrentPassword("");
+                                }}>
                                     ยกเลิก
                                 </Button>
                                 <Button
                                     variant="destructive"
-                                    disabled={actioningId === confirmDeleteId}
-                                    onClick={() => handleDelete(confirmDeleteId)}
+                                    disabled={actioningId === confirmDeleteId || !deleteCurrentPassword}
+                                    onClick={() => handleDelete(confirmDeleteId, deleteCurrentPassword)}
                                 >
                                     {actioningId === confirmDeleteId ? "กำลังลบ..." : "ลบถาวร"}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {confirmRevokeAll && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+                        <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
+                            <h2 className="text-lg font-semibold">ออกจากระบบทุกบัญชี?</h2>
+                            <p className="mt-2 text-sm text-muted-foreground">
+                                การดำเนินการนี้จะยกเลิกเซสชันของผู้ใช้และผู้ดูแลระบบทุกคน รวมถึงบัญชีนี้
+                            </p>
+                            <div className="mt-6 flex justify-end gap-2">
+                                <Button variant="outline" onClick={() => setConfirmRevokeAll(false)}>
+                                    ยกเลิก
+                                </Button>
+                                <Button
+                                    variant="destructive"
+                                    disabled={actioningId === "all-sessions"}
+                                    onClick={handleRevokeAllSessions}
+                                >
+                                    {actioningId === "all-sessions" ? "กำลังยกเลิก..." : "ยืนยันออกจากทุกบัญชี"}
                                 </Button>
                             </div>
                         </div>

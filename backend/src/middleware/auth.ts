@@ -2,6 +2,8 @@ import type { NextFunction, Request, Response } from "express";
 import { User } from "../models/user.js";
 import { verifyAccessToken } from "../services/token.js";
 
+export const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   try {
     const header = req.headers.authorization;
@@ -28,8 +30,27 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return res.status(403).json({ message: "This account has been disabled" });
     }
 
+    if ((user.tokenVersion ?? 0) !== decoded.tokenVersion) {
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
+
     if (user.passwordChangedAt && decoded.iat * 1000 < user.passwordChangedAt.getTime()) {
       return res.status(401).json({ message: "Session expired, please log in again" });
+    }
+
+    const now = new Date();
+    const lastActivity = user.lastActivityAt?.getTime() ?? decoded.iat * 1000;
+    if (now.getTime() - lastActivity > SESSION_IDLE_TIMEOUT_MS) {
+      return res.status(401).json({ message: "Session expired due to inactivity" });
+    }
+
+    const activityUpdate = await User.updateOne(
+      { _id: user._id, status: "active", tokenVersion: decoded.tokenVersion },
+      { $set: { lastActivityAt: now } },
+      { timestamps: false },
+    );
+    if (activityUpdate.matchedCount !== 1) {
+      return res.status(401).json({ message: "Invalid or expired token" });
     }
 
     req.user = {

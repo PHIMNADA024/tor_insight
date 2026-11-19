@@ -1,9 +1,11 @@
 // routes/user.ts
 import { Router } from "express";
-import bcrypt from "bcryptjs";
+import { sendPasswordChangedEmail } from "../services/email.js";
 import { User } from "../models/user.js";
 import { requireAuth } from "../middleware/auth.js";
 import { isBoundedString, isFiniteNumber, isRecord } from "../middleware/validation.js";
+import { checkPasswordLength, passwordPolicyMessage, validateNewPassword } from "../services/passwordPolicy.js";
+import { hashPassword, verifyPassword } from "../services/passwordHash.js";
 
 const router = Router();
 
@@ -154,6 +156,9 @@ router.put("/change-password", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "ข้อมูลที่ส่งมาไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง" });
     }
     const { currentPassword, newPassword } = req.body;
+    if (Object.keys(req.body).some((field) => !["currentPassword", "newPassword"].includes(field))) {
+      return res.status(400).json({ message: "Unsupported password change field" });
+    }
 
     if (typeof currentPassword !== "string" || currentPassword.length === 0 ||
       typeof newPassword !== "string" || newPassword.length === 0) {
@@ -162,14 +167,14 @@ router.put("/change-password", requireAuth, async (req, res) => {
       });
     }
 
-    if (Buffer.byteLength(currentPassword, "utf8") > 72 || Buffer.byteLength(newPassword, "utf8") > 72) {
+    if (checkPasswordLength(currentPassword) === "too_long") {
       return res.status(400).json({ message: "รหัสผ่านยาวเกินไป กรุณาใช้รหัสผ่านที่สั้นลง" });
     }
 
-    if (newPassword.length < 8) {
-      return res.status(400).json({
-        message: "Password must be at least 8 characters",
-      });
+    const passwordCheck = await validateNewPassword(newPassword);
+    if (!passwordCheck.ok) {
+      const status = passwordCheck.reason === "unavailable" ? 503 : 400;
+      return res.status(status).json({ message: passwordPolicyMessage(passwordCheck.reason) });
     }
 
     const user = await User.findById(req.user!.id).select("+passwordHash");
@@ -182,15 +187,23 @@ router.put("/change-password", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "This account signs in with Google and has no password to change" });
     }
 
-    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    const isMatch = await verifyPassword(currentPassword, user.passwordHash, user.passwordHashScheme);
 
     if (!isMatch) {
       return res.status(400).json({ message: "Current password is incorrect" });
     }
 
-    user.passwordHash = await bcrypt.hash(newPassword, 12);
+    user.passwordHash = await hashPassword(newPassword);
+    user.passwordHashScheme = "bcrypt_sha256";
     user.passwordChangedAt = new Date();
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    user.mfaLoginChallengeHash = undefined;
+    user.mfaLoginChallengeExpiresAt = undefined;
     await user.save();
+
+    sendPasswordChangedEmail(user.email, user.name).catch((error) => {
+      console.error("Failed to send password change notification:", error);
+    });
 
     return res.json({ message: "Password changed successfully" });
   } catch (error) {

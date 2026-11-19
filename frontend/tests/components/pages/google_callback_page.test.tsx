@@ -40,26 +40,45 @@ describe("Google sign-in", () => {
     );
   });
 
-  it("swaps the login code for a token, stores it and goes home", async () => {
-    fetchMock.mockReturnValue(jsonResponse({
-      token: "google-access-token",
-      user: { id: "user-1", name: "Somchai", email: "somchai@gmail.com", role: "end_user" },
-    }));
+  it("swaps the login code and sends the MFA step to the login page", async () => {
+    fetchMock.mockReturnValue(jsonResponse({ mfaRequired: true, challengeToken: "c".repeat(64) }, 202));
     openWithFragment(`code=${LOGIN_CODE}`);
 
     render(<GoogleCallbackPage />);
 
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/"));
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/login"));
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:4000/api/auth/google/exchange",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ code: LOGIN_CODE }) }),
     );
-    expect(sessionStorage.getItem("token")).toBe("google-access-token");
-    expect(JSON.parse(sessionStorage.getItem("user")!)).toMatchObject({ email: "somchai@gmail.com" });
+    expect(JSON.parse(sessionStorage.getItem("pendingGoogleMfa")!)).toMatchObject({ mfaRequired: true });
+    expect(sessionStorage.getItem("token")).toBeNull();
+  });
+
+  it("continues a Google login with the authenticator code step", async () => {
+    sessionStorage.setItem("pendingGoogleMfa", JSON.stringify({ mfaRequired: true, challengeToken: "c".repeat(64) }));
+
+    render(<LoginPage />);
+
+    expect(await screen.findByLabelText("รหัส authenticator 6 หลัก")).toBeInTheDocument();
+    expect(sessionStorage.getItem("pendingGoogleMfa")).toBeNull();
+  });
+
+  it("continues a first Google login with MFA setup", async () => {
+    fetchMock.mockReturnValue(jsonResponse({ secret: "JBSWY3DPEHPK3PXP", otpauthUri: "otpauth://totp/x" }));
+    sessionStorage.setItem("pendingGoogleMfa", JSON.stringify({ mfaSetupRequired: true, setupToken: "setup-token" }));
+
+    render(<LoginPage />);
+
+    expect(await screen.findByText("JBSWY3DPEHPK3PXP")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:4000/api/auth/mfa/setup",
+      expect.objectContaining({ headers: { Authorization: "Bearer setup-token" } }),
+    );
   });
 
   it("removes the code from the address bar right away", async () => {
-    fetchMock.mockReturnValue(jsonResponse({ token: "t", user: {} }));
+    fetchMock.mockReturnValue(jsonResponse({ mfaRequired: true, challengeToken: "c".repeat(64) }, 202));
     openWithFragment(`code=${LOGIN_CODE}`);
 
     render(<GoogleCallbackPage />);

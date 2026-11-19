@@ -18,7 +18,8 @@ const DEFAULT_ERROR = "เข้าสู่ระบบด้วย Google ไ�
 
 /**
  * The backend sends the browser here after Google sign-in, with either a
- * one-time login code or an error code in the URL fragment.
+ * one-time login code or an error code in the URL fragment. The code is swapped
+ * for the MFA step, which the login page then shows.
  */
 function GoogleCallbackPage() {
     const router = useRouter();
@@ -50,14 +51,15 @@ function GoogleCallbackPage() {
                 });
                 const data = await res.json();
 
-                if (!res.ok) {
+                if (res.status !== 202) {
                     setError(res.status === 403 ? ERROR_MESSAGES.account_disabled : DEFAULT_ERROR);
                     return;
                 }
 
-                sessionStorage.setItem("token", data.token);
-                sessionStorage.setItem("user", JSON.stringify(data.user));
-                router.replace("/");
+                // Google replaced the password, not the authenticator code: the
+                // login page shows the MFA step (setup or code) next.
+                sessionStorage.setItem("pendingGoogleMfa", JSON.stringify(data));
+                router.replace("/login");
             } catch {
                 setError(DEFAULT_ERROR);
             }

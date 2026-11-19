@@ -5,7 +5,7 @@ import { OAuthLoginCode, OAuthState } from "../models/oauth.js";
 import { User } from "../models/user.js";
 import { authLimiter } from "../middleware/rateLimit.js";
 import { isRecord } from "../middleware/validation.js";
-import { signAccessToken } from "../services/token.js";
+import { signMfaSetupToken } from "../services/token.js";
 import {
   GoogleAuthError,
   createGoogleClient,
@@ -21,13 +21,18 @@ import {
  * 1. GET  /google           sends the browser to Google with state, nonce and a PKCE challenge
  * 2. GET  /google/callback  Google sends the browser back with a code; we check the state,
  *                           swap the code for an ID token and verify it
- * 3. POST /google/exchange  the frontend swaps a one-time login code for our access token
+ * 3. POST /google/exchange  the frontend swaps a one-time login code for the MFA step
+ *
+ * Google sign-in replaces the password, not the authenticator code: the exchange
+ * answers exactly like a correct password does, so MFA setup or verification
+ * (in auth.ts) is still required before an access token is issued.
  */
 const router = Router();
 
 const STATE_COOKIE = "tor_oauth_state";
 const STATE_TTL_MS = 10 * 60 * 1000;
 const LOGIN_CODE_TTL_MS = 60 * 1000;
+const MFA_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const RANDOM_VALUE = /^[A-Za-z0-9_-]{43}$/; // 32 random bytes, base64url
 
 function randomValue() {
@@ -184,7 +189,7 @@ router.post("/google/exchange", authLimiter, async (req, res) => {
       return res.status(401).json({ message: "Login code is invalid or expired" });
     }
 
-    const user = await User.findById(login.userId);
+    const user = await User.findById(login.userId).select("+mfaSecretEncrypted");
     if (!user) {
       return res.status(401).json({ message: "Login code is invalid or expired" });
     }
@@ -192,15 +197,23 @@ router.post("/google/exchange", authLimiter, async (req, res) => {
       return res.status(403).json({ message: "This account has been disabled" });
     }
 
-    user.lastLoginAt = new Date();
+    // Same answers as a correct password in POST /login.
+    if (!user.mfaEnabled) {
+      return res.status(202).json({
+        mfaSetupRequired: true,
+        setupToken: signMfaSetupToken({ id: user._id.toString(), tokenVersion: user.tokenVersion ?? 0 }),
+      });
+    }
+    if (!user.mfaSecretEncrypted) {
+      return res.status(401).json({ message: "Login code is invalid or expired" });
+    }
+
+    const challengeToken = crypto.randomBytes(32).toString("hex");
+    user.mfaLoginChallengeHash = hash(challengeToken);
+    user.mfaLoginChallengeExpiresAt = new Date(Date.now() + MFA_CHALLENGE_TTL_MS);
     await user.save();
 
-    const token = signAccessToken({ id: user._id.toString(), role: user.role });
-    return res.json({
-      message: "Login successful",
-      token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
-    });
+    return res.status(202).json({ mfaRequired: true, challengeToken });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Login failed" });

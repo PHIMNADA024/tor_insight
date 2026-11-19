@@ -34,8 +34,8 @@ export function SiteHeader() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  function handleConfirmLogout() {
-    logout();
+  async function handleConfirmLogout() {
+    await logout();
     setShowLogoutConfirm(false);
     setMenuOpen(false);
     router.push("/");
