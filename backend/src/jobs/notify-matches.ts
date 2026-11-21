@@ -61,7 +61,7 @@ export async function notifyMatchingUsers(newTorIds: string[]) {
         })),
       );
     } catch (error) {
-      console.error(`Failed to create in-app notifications for ${user.email}:`, error);
+      console.error(`Failed to create in-app notifications for user ${user._id}:`, error);
     }
 
     if (user.notifyByEmail) {
@@ -77,7 +77,7 @@ export async function notifyMatchingUsers(newTorIds: string[]) {
           })),
         );
       } catch (error) {
-        console.error(`Failed to email ${user.email}:`, error);
+        console.error(`Failed to send TOR match email to user ${user._id}:`, error);
       }
     }
 

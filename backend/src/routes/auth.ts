@@ -7,6 +7,7 @@ import { sendVerificationEmail } from "../services/email.js";
 import { sendPasswordChangedEmail, sendPasswordResetEmail } from "../services/email.js";
 import { createTotpSecret, createTotpUri, decryptMfaSecret, encryptMfaSecret, verifyTotp } from "../services/mfa.js";
 import { hashPassword, verifyPassword } from "../services/passwordHash.js";
+import { MAX_OTP_ATTEMPTS, OTP_TTL_MS, generateOtp, hashOtp, sameDigest, verifyOtp } from "../services/otp.js";
 import { requireAuth } from "../middleware/auth.js";
 import { authLimiter, otpLimiter } from "../middleware/rateLimit.js";
 import { isBoundedString, isEmailAddress, isRecord } from "../middleware/validation.js";
@@ -36,10 +37,6 @@ function normalizeEnumerationTiming(req: Request, res: Response, next: NextFunct
     return res;
   }) as Response["json"];
   next();
-}
-
-function generateOTP() {
-  return crypto.randomInt(100000, 1000000).toString();
 }
 
 function hashToken(token: string) {
@@ -94,7 +91,7 @@ router.post("/register", authLimiter, normalizeEnumerationTiming, async (req, re
       return res.status(201).json(GENERIC_REGISTRATION_RESPONSE);
     }
 
-    const otp = generateOTP();
+    const otp = generateOtp();
 
     const user = await User.create({
       name: normalizedName,
@@ -104,10 +101,9 @@ router.post("/register", authLimiter, normalizeEnumerationTiming, async (req, re
       role: "end_user",
       status: "active",
       isEmailVerified: false,
-      emailVerificationToken: otp,
-      emailVerificationExpires: new Date(
-        Date.now() + 10 * 60 * 1000,
-      ),
+      emailVerificationToken: await hashOtp(otp),
+      emailVerificationExpires: new Date(Date.now() + OTP_TTL_MS),
+      emailVerificationAttempts: 0,
     });
 
     sendVerificationEmail(normalizedEmail, otp).catch((error) => {
@@ -363,34 +359,28 @@ router.post("/verify-email", otpLimiter, normalizeEnumerationTiming, async (req,
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    const user = await User.findOne({
-      email: normalizedEmail,
-    }).select(
-      "+emailVerificationToken +emailVerificationExpires",
-    );
+    // Count the attempt before checking the code, in one atomic update, so
+    // parallel guesses can't get past the limit (the IP rate limit alone can be
+    // spread over many IPs).
+    const user = await User.findOneAndUpdate(
+      {
+        email: normalizedEmail,
+        isEmailVerified: false,
+        emailVerificationExpires: { $gt: new Date() },
+        emailVerificationAttempts: { $not: { $gte: MAX_OTP_ATTEMPTS } },
+      },
+      { $inc: { emailVerificationAttempts: 1 } },
+      { returnDocument: "after", timestamps: false },
+    ).select("+emailVerificationToken");
 
-    if (!user) {
-      return res.status(400).json(GENERIC_VERIFICATION_FAILURE);
-    }
-
-    if (user.isEmailVerified) {
-      return res.status(400).json(GENERIC_VERIFICATION_FAILURE);
-    }
-
-    if (
-      !user.emailVerificationExpires ||
-      user.emailVerificationExpires < new Date()
-    ) {
-      return res.status(400).json(GENERIC_VERIFICATION_FAILURE);
-    }
-
-    if (user.emailVerificationToken !== otp) {
+    if (!user || !(await verifyOtp(otp, user.emailVerificationToken))) {
       return res.status(400).json(GENERIC_VERIFICATION_FAILURE);
     }
 
     user.isEmailVerified = true;
-    user.emailVerificationToken = undefined;
-    user.emailVerificationExpires = undefined;
+    user.set("emailVerificationToken", undefined);
+    user.set("emailVerificationExpires", undefined);
+    user.set("emailVerificationAttempts", undefined);
 
     await user.save();
 
@@ -433,9 +423,10 @@ router.post("/resend-otp", otpLimiter, normalizeEnumerationTiming, async (req, r
       return res.json(GENERIC_RESEND_RESPONSE);
     }
 
-    const otp = generateOTP();
-    user.emailVerificationToken = otp;
-    user.emailVerificationExpires = new Date(Date.now() + 10 * 60 * 1000);
+    const otp = generateOtp();
+    user.emailVerificationToken = await hashOtp(otp);
+    user.emailVerificationExpires = new Date(Date.now() + OTP_TTL_MS);
+    user.emailVerificationAttempts = 0;
     await user.save();
 
     sendVerificationEmail(normalizedEmail, otp).catch((error) => {
@@ -535,7 +526,7 @@ router.post("/reset-password", authLimiter, async (req, res) => {
       return res.status(400).json({ message: "Invalid or expired reset link" });
     }
 
-    if (user.passwordResetExpires < new Date() || user.passwordResetToken !== hashToken(token)) {
+    if (user.passwordResetExpires < new Date() || !sameDigest(user.passwordResetToken, hashToken(token))) {
       return res.status(400).json({ message: "Invalid or expired reset link" });
     }
 

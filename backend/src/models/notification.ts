@@ -18,6 +18,8 @@ const notificationSchema = new Schema(
 );
 
 notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
+// Retention (V14.2.7): notifications are deleted automatically after 90 days.
+notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
 
 export type NotificationDoc = InferSchemaType<typeof notificationSchema>;
 export const Notification = model("Notification", notificationSchema);

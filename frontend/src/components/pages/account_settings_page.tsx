@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { handleAuthError } from "@/hooks/use-auth";
+import { handleAuthError, notifyAuthChanged } from "@/hooks/use-auth";
 import { CATEGORY_OPTIONS, categoryLabel } from "@/lib/categories";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -169,12 +169,8 @@ export default function AccountSettingsPage() {
 
             setProfileMessage("บันทึกข้อมูลเรียบร้อยแล้ว");
 
-            const stored = localStorage.getItem("user") ? localStorage : sessionStorage;
-            const raw = stored.getItem("user");
-            if (raw) {
-                const parsed = JSON.parse(raw);
-                stored.setItem("user", JSON.stringify({ ...parsed, name }));
-            }
+            // Reload the name shown in the header.
+            notifyAuthChanged();
         } catch {
             setProfileError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
         } finally {

@@ -76,7 +76,7 @@ async function notifyAdminsOfNewFeedback(
       description,
       torReference,
     ).catch((error) => {
-      console.error(`Failed to send new-feedback email to ${admin.email}:`, error);
+      console.error(`Failed to send new-feedback email to admin ${admin._id}:`, error);
     });
   }
 }

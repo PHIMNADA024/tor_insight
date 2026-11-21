@@ -6,6 +6,7 @@ import request from "supertest";
 import { User } from "../../src/models/user.js";
 import { verifyPassword } from "../../src/services/passwordHash.js";
 import authRoutes from "../../src/routes/auth.js";
+import { hashOtp, verifyOtp } from "../../src/services/otp.js";
 import {
   sendPasswordResetEmail,
   sendPasswordChangedEmail,
@@ -141,7 +142,7 @@ describe("email verification", () => {
       email: "verify@example.test",
       passwordHash: "not-used-here",
       isEmailVerified: false,
-      emailVerificationToken: "123456",
+      emailVerificationToken: await hashOtp("123456"),
       emailVerificationExpires: new Date(Date.now() + 60_000),
     });
 
@@ -164,7 +165,7 @@ describe("email verification", () => {
       email: "expired-otp@example.test",
       passwordHash: "not-used-here",
       isEmailVerified: false,
-      emailVerificationToken: "123456",
+      emailVerificationToken: await hashOtp("123456"),
       emailVerificationExpires: new Date(Date.now() - 1_000),
     });
 
@@ -196,7 +197,7 @@ describe("email verification", () => {
       email: "resend@example.test",
       passwordHash: "not-used-here",
       isEmailVerified: false,
-      emailVerificationToken: "111111",
+      emailVerificationToken: await hashOtp("111111"),
       emailVerificationExpires: new Date(Date.now() - 1_000),
     });
 
@@ -210,7 +211,9 @@ describe("email verification", () => {
 
     const user = await User.findOne({ email: "resend@example.test" })
       .select("+emailVerificationToken +emailVerificationExpires");
-    expect(user?.emailVerificationToken).toBe((emailMock.mock.calls[0] as [string, string])[1]);
+    const emailedOtp = (emailMock.mock.calls[0] as [string, string])[1];
+    expect(user?.emailVerificationToken).not.toBe(emailedOtp);
+    expect(await verifyOtp(emailedOtp, user?.emailVerificationToken)).toBe(true);
     expect(user?.emailVerificationExpires?.getTime()).toBeGreaterThan(Date.now());
   });
 });
