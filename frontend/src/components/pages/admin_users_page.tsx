@@ -296,8 +296,8 @@ export default function AdminUsersPage() {
                                     <tr>
                                         <th className="p-3 font-medium">ชื่อ</th>
                                         <th className="p-3 font-medium">อีเมล</th>
-                                        <th className="p-3 font-medium">บทบาท</th>
-                                        <th className="p-3 font-medium">สถานะ</th>
+                                        <th className="whitespace-nowrap p-3 font-medium">บทบาท</th>
+                                        <th className="whitespace-nowrap p-3 font-medium">สถานะ</th>
                                         <th className="p-3 font-medium">เข้าสู่ระบบล่าสุด</th>
                                         <th className="p-3 font-medium text-right">การดำเนินการ</th>
                                     </tr>
@@ -317,12 +317,12 @@ export default function AdminUsersPage() {
                                                     )}
                                                 </td>
                                                 <td className="p-3 text-muted-foreground">{user.email}</td>
-                                                <td className="p-3">
+                                                <td className="whitespace-nowrap p-3">
                                                     {ROLE_LABELS[user.role] ?? user.role}
                                                 </td>
-                                                <td className="p-3">
+                                                <td className="whitespace-nowrap p-3">
                                                     <span
-                                                        className={`rounded-md px-2 py-0.5 text-xs ${
+                                                        className={`inline-block rounded-md px-2 py-0.5 text-xs ${
                                                             user.status === "active"
                                                                 ? "bg-success/15 text-success"
                                                                 : "bg-destructive/15 text-destructive"
